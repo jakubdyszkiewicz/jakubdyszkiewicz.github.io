@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Filtering - handling optional values using QueryDSL with Java 8</title>
+  <meta name="description" content="QueryDSLQueryDSL is a nice library for producing typesafe, dynamic queries. It is a sane alternative to standard, hideous JPA Criteria API.">
+  <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
+  <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="canonical" href="http://dyszkiewicz.me/programming/java/2016/05/14/handling-optional-values-using-querydsl-and-java8.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://dyszkiewicz.me/feed.xml">
+</head>
+
+
+  <body>
+
+    
+<div class="wrapper">
+  <center> <a href="/index.html"><div class="site-title">   Dyszkiewicz; </div></a></center>
+</div>
+<div class="wrapper site-description">
+<center>  Tech blog </center>
+</div>
+<div class="wrapper">
+  <div class="trigger site-navigation">
+    <a class="page-link" href="/index.html">HOME</a>
+
+    
+    
+
+    <span class="exclamationMark">/</span><a class="page-link" href="/about/">About</a>
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>
+</div>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/java/2016/05/14/handling-optional-values-using-querydsl-and-java8.html">Filtering - handling optional values using QueryDSL with Java 8</a></h1>
+  <center>  <p class="post-meta"><time datetime="2016-05-14T16:15:31+02:00" itemprop="datePublished">May 14, 2016</time></p>
+    
+   </center>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="querydsl">QueryDSL</h2>
+<p><a href="http://www.querydsl.com/">QueryDSL</a> is a nice library for producing typesafe, dynamic queries. It is a sane alternative to standard, hideous JPA Criteria API.</p>
+
+<p>Spring Data provides a great way to create simple queries, but for more dynamic ones you have to go back to Criteria API or QueryDSL. Both are supported in Spring Data.</p>
+
+<h2 id="the-problem">The problem</h2>
+
+<p>The most common use case of dynamic queries is filtering. So let’s say you have a list of blog Posts which have a bunch of properties and you want to filter it by all of them.</p>
+
+<h2 id="project-setup">Project setup</h2>
+
+<p>The project is based on Spring Boot, Spring Data with H2 Database, QueryDSL, Lombok as mandatory lib and Spock with DbUnit for testing. You can find <a href="https://github.com/jakubdyszkiewicz/querydsl-optional-filter">working example on my github</a>.</p>
+
+<p>First, let’s create our domain objects.</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Entity</span>
+<span class="nd">@Data</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Post</span> <span class="o">{</span>
+    <span class="nd">@Id</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">id</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">author</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">title</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">body</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">LocalDate</span> <span class="n">date</span><span class="o">;</span>
+
+    <span class="nd">@ManyToMany</span><span class="o">(</span><span class="n">fetch</span> <span class="o">=</span> <span class="n">FetchType</span><span class="o">.</span><span class="na">EAGER</span><span class="o">)</span>
+    <span class="nd">@JoinTable</span><span class="o">(</span><span class="n">name</span> <span class="o">=</span> <span class="s">"post_tags"</span><span class="o">,</span> <span class="n">joinColumns</span> <span class="o">=</span> <span class="nd">@JoinColumn</span><span class="o">(</span><span class="n">name</span> <span class="o">=</span> <span class="s">"post_id"</span><span class="o">,</span> <span class="n">referencedColumnName</span> <span class="o">=</span> <span class="s">"id"</span><span class="o">),</span>
+        <span class="n">inverseJoinColumns</span> <span class="o">=</span> <span class="nd">@JoinColumn</span><span class="o">(</span><span class="n">name</span> <span class="o">=</span> <span class="s">"tag_id"</span><span class="o">,</span> <span class="n">referencedColumnName</span> <span class="o">=</span> <span class="s">"id"</span><span class="o">))</span>
+    <span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">Tag</span><span class="o">&gt;</span> <span class="n">tags</span><span class="o">;</span>
+<span class="o">}</span>
+
+<span class="nd">@Entity</span>
+<span class="nd">@Data</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">Tag</span> <span class="o">{</span>
+    <span class="nd">@Id</span>
+    <span class="kd">private</span> <span class="n">Integer</span> <span class="n">id</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">name</span><span class="o">;</span>
+    <span class="nd">@ManyToMany</span><span class="o">(</span><span class="n">mappedBy</span> <span class="o">=</span> <span class="s">"tags"</span><span class="o">)</span>
+    <span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">Post</span><span class="o">&gt;</span> <span class="n">posts</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<h3 id="querydsl-with-spring-data">QueryDSL with Spring Data</h3>
+<p>Once everything is set up you can create repository extending <code class="highlighter-rouge">QueryDslPredicateExecutor</code></p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">interface</span> <span class="nc">PostRepository</span> <span class="kd">extends</span> <span class="n">CrudRepository</span><span class="o">&lt;</span><span class="n">Post</span><span class="o">,</span> <span class="n">Integer</span><span class="o">&gt;,</span> <span class="n">QueryDslPredicateExecutor</span><span class="o">&lt;</span><span class="n">Post</span><span class="o">&gt;</span> <span class="o">{</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>It adds methods like <code class="highlighter-rouge">Iterable&lt;T&gt; findAll(Predicate predicate);</code> or <code class="highlighter-rouge">Page&lt;T&gt; findAll(Predicate predicate, Pageable pageable);</code> to fetch entities by QueryDSL Predicate.</p>
+
+<h2 id="filtering">Filtering</h2>
+
+<h3 id="postfilter">PostFilter</h3>
+
+<p>We want to filter out list by author, title, date range (not just exact day of post) and list of tags. Tags are represented by list of Strings as it would be prefered way to query from frontend.</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="nd">@Data</span>
+<span class="kd">public</span> <span class="kd">class</span> <span class="nc">PostFilter</span> <span class="o">{</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">author</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">String</span> <span class="n">title</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">LocalDate</span> <span class="n">from</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">LocalDate</span> <span class="n">to</span><span class="o">;</span>
+    <span class="kd">private</span> <span class="n">List</span><span class="o">&lt;</span><span class="n">String</span><span class="o">&gt;</span> <span class="n">tags</span><span class="o">;</span>
+<span class="o">}</span></code></pre></figure>
+
+<h3 id="creating-filterbuilder---take-1">Creating FilterBuilder - Take 1</h3>
+<p>Now we need a class to provide Predicate for given PostFilter that can later be used for <code class="highlighter-rouge">findAll(Predicate predicate)</code> method</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">class</span> <span class="nc">PostFilterOldBuilder</span> <span class="kd">implements</span> <span class="n">PostFilterBuilder</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">QPost</span> <span class="n">POST</span> <span class="o">=</span> <span class="n">QPost</span><span class="o">.</span><span class="na">post</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">Predicate</span> <span class="n">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
+        <span class="n">BooleanBuilder</span> <span class="n">builder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BooleanBuilder</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">());</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">StringUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">()))</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">author</span><span class="o">.</span><span class="na">containsIgnoreCase</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">()));</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">StringUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTitle</span><span class="o">()))</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">title</span><span class="o">.</span><span class="na">containsIgnoreCase</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTitle</span><span class="o">()));</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getFrom</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">date</span><span class="o">.</span><span class="na">after</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getFrom</span><span class="o">()));</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTo</span><span class="o">()</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">date</span><span class="o">.</span><span class="na">before</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTo</span><span class="o">()));</span>
+        <span class="o">}</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">CollectionUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTags</span><span class="o">()))</span> <span class="o">{</span>
+            <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">tags</span><span class="o">.</span><span class="na">any</span><span class="o">().</span><span class="na">name</span><span class="o">.</span><span class="na">in</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getTags</span><span class="o">()));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="n">builder</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Let’s face it. That looks like a lot of boilerplate… and it is a small example! Imagine you have 20 fields (which is not that uncommon).</p>
+
+<h3 id="creating-filterbuilder---take-2">Creating FilterBuilder - Take 2</h3>
+<p>We can leverage Java 8 method references and create a small fluent API.</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">class</span> <span class="nc">OptionalBooleanBuilder</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="n">BooleanExpression</span> <span class="n">predicate</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">BooleanExpression</span> <span class="n">predicate</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">this</span><span class="o">.</span><span class="na">predicate</span> <span class="o">=</span> <span class="n">predicate</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notNullAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">T</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">T</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(</span><span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">String</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">StringUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">value</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">collection</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">if</span> <span class="o">(!</span><span class="n">CollectionUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">collection</span><span class="o">))</span> <span class="o">{</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">collection</span><span class="o">)));</span>
+        <span class="o">}</span>
+        <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
+    <span class="o">}</span>
+
+    <span class="kd">public</span> <span class="n">BooleanExpression</span> <span class="n">build</span><span class="o">()</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="n">predicate</span><span class="o">;</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>and then use it like that</p>
+
+<figure class="highlight"><pre><code class="language-java" data-lang="java"><span class="kd">public</span> <span class="kd">class</span> <span class="nc">PostFilterFluentBuilder</span> <span class="kd">implements</span> <span class="n">PostFilterBuilder</span> <span class="o">{</span>
+
+    <span class="kd">private</span> <span class="kd">final</span> <span class="n">QPost</span> <span class="n">POST</span> <span class="o">=</span> <span class="n">QPost</span><span class="o">.</span><span class="na">post</span><span class="o">;</span>
+
+    <span class="kd">public</span> <span class="n">Predicate</span> <span class="n">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">notEmptyAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">author</span><span class="o">::</span><span class="n">containsIgnoreCase</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">notEmptyAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">title</span><span class="o">::</span><span class="n">containsIgnoreCase</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getTitle</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">notNullAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">date</span><span class="o">::</span><span class="n">after</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getFrom</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">notNullAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">date</span><span class="o">::</span><span class="n">before</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getTo</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">notEmptyAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">tags</span><span class="o">.</span><span class="na">any</span><span class="o">().</span><span class="na">name</span><span class="o">::</span><span class="n">in</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getTags</span><span class="o">())</span>
+                <span class="o">.</span><span class="na">build</span><span class="o">();</span>
+    <span class="o">}</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>Not only it is more readable but alao it is flexible as <code class="highlighter-rouge">OptionalBooleanBuilder</code> accepts QueryDSL <code class="highlighter-rouge">BooleanExpression</code> which most filtering expressions used for filtering inherit from.</p>
+
+<h3 id="querydsl-web-support">QueryDSL Web Support</h3>
+<p>If you are sending filter parameters from web (which you probably are) you can also use <a href="http://docs.spring.io/spring-data/commons/docs/current/reference/html/#core.web.type-safe">Spring QueryDSL Web Support</a>. It looks neat for basic usage, but customization looks a bit cumbersome to me.</p>
+
+<h2 id="testing">Testing</h2>
+<p>Does it even work? To check that, I created sample database state using DbUnit</p>
+
+<figure class="highlight"><pre><code class="language-xml" data-lang="xml"><span class="nt">&lt;dataset&gt;</span>
+    <span class="nt">&lt;tag</span> <span class="na">id=</span><span class="s">"1"</span> <span class="na">name=</span><span class="s">"tech"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;tag</span> <span class="na">id=</span><span class="s">"2"</span> <span class="na">name=</span><span class="s">"lifestyle"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;tag</span> <span class="na">id=</span><span class="s">"3"</span> <span class="na">name=</span><span class="s">"cooking"</span> <span class="nt">/&gt;</span>
+
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"1"</span> <span class="na">author=</span><span class="s">"Craig Larman"</span> <span class="na">title=</span><span class="s">"iPhone 7 leaked"</span> <span class="na">date=</span><span class="s">"2016-05-10"</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"2"</span> <span class="na">author=</span><span class="s">"Stuart Halloway"</span> <span class="na">title=</span><span class="s">"10 things to buy before Christmas"</span> <span class="na">date=</span><span class="s">"2016-01-13"</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"3"</span> <span class="na">author=</span><span class="s">"Louis Fleenor"</span> <span class="na">title=</span><span class="s">"Top 5 phones of 2015"</span> <span class="na">date=</span><span class="s">"2015-03-10"</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"4"</span> <span class="na">author=</span><span class="s">"Billy Burrill"</span> <span class="na">title=</span><span class="s">"The perfect pizza"</span> <span class="na">date=</span><span class="s">"2016-05-15"</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"5"</span> <span class="na">author=</span><span class="s">"Deidra Mott"</span> <span class="na">title=</span><span class="s">"Is Google Glass dead?"</span> <span class="na">date=</span><span class="s">"2016-09-10"</span><span class="nt">/&gt;</span>
+    <span class="nt">&lt;post</span> <span class="na">id=</span><span class="s">"6"</span> <span class="na">author=</span><span class="s">"Buffy Hellwig"</span> <span class="na">title=</span><span class="s">"Fried Chicken Grilled Cheese"</span> <span class="na">date=</span><span class="s">"2014-05-10"</span><span class="nt">/&gt;</span>
+
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"1"</span> <span class="na">tag_id=</span><span class="s">"1"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"2"</span> <span class="na">tag_id=</span><span class="s">"1"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"2"</span> <span class="na">tag_id=</span><span class="s">"2"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"3"</span> <span class="na">tag_id=</span><span class="s">"1"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"3"</span> <span class="na">tag_id=</span><span class="s">"2"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"4"</span> <span class="na">tag_id=</span><span class="s">"3"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"5"</span> <span class="na">tag_id=</span><span class="s">"1"</span> <span class="nt">/&gt;</span>
+    <span class="nt">&lt;post_tags</span> <span class="na">post_id=</span><span class="s">"6"</span> <span class="na">tag_id=</span><span class="s">"3"</span> <span class="nt">/&gt;</span>
+<span class="nt">&lt;/dataset&gt;</span></code></pre></figure>
+
+<p>and created Spring Integration Test using Spock and its wonderful support for Data Driven Testing</p>
+
+<figure class="highlight"><pre><code class="language-groovy" data-lang="groovy"><span class="nd">@DatabaseSetup</span><span class="o">(</span><span class="s2">"/posts.xml"</span><span class="o">)</span>
+<span class="nd">@Unroll</span><span class="o">(</span><span class="s2">"should retrieve posts #ids given filter #postFilter"</span><span class="o">)</span>
+<span class="kt">def</span> <span class="s2">"should retrieve posts given filter"</span><span class="o">(</span><span class="n">Map</span> <span class="n">postFilter</span><span class="o">,</span> <span class="n">List</span> <span class="n">ids</span><span class="o">)</span> <span class="o">{</span>
+    <span class="nl">expect:</span>
+        <span class="kt">def</span> <span class="n">predicate</span> <span class="o">=</span> <span class="n">filterBuilder</span><span class="o">.</span><span class="na">build</span><span class="o">(</span><span class="k">new</span> <span class="n">PostFilter</span><span class="o">(</span><span class="n">postFilter</span><span class="o">))</span>
+        <span class="kt">def</span> <span class="n">posts</span> <span class="o">=</span> <span class="n">postRepository</span><span class="o">.</span><span class="na">findAll</span><span class="o">(</span><span class="n">predicate</span><span class="o">)</span>
+        <span class="n">posts</span><span class="o">*.</span><span class="na">id</span> <span class="o">==</span> <span class="n">ids</span>
+    <span class="nl">where:</span>
+        <span class="n">postFilter</span>                          <span class="o">|</span> <span class="n">ids</span>
+        <span class="o">[:]</span>                                 <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">author:</span> <span class="s1">'larman'</span><span class="o">]</span>                  <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">title:</span> <span class="s1">'phone'</span><span class="o">]</span>                    <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">,</span> <span class="mi">3</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">from:</span> <span class="n">LocalDate</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="mi">2016</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">1</span><span class="o">)]</span>    <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">to:</span> <span class="n">LocalDate</span><span class="o">.</span><span class="na">of</span><span class="o">(</span><span class="mi">2016</span><span class="o">,</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">1</span><span class="o">)]</span>      <span class="o">|</span> <span class="o">[</span><span class="mi">3</span><span class="o">,</span> <span class="mi">6</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">tags:</span> <span class="o">[</span><span class="s1">'tech'</span><span class="o">]]</span>                    <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">,</span><span class="mi">2</span><span class="o">,</span><span class="mi">3</span><span class="o">,</span><span class="mi">5</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">tags:</span> <span class="o">[</span><span class="s1">'tech'</span><span class="o">,</span> <span class="s1">'cooking'</span><span class="o">]]</span>         <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="o">,</span> <span class="mi">4</span><span class="o">,</span> <span class="mi">5</span><span class="o">,</span> <span class="mi">6</span><span class="o">]</span>
+        <span class="o">[</span><span class="nl">author:</span> <span class="s1">'larman'</span><span class="o">,</span> <span class="nl">title:</span> <span class="s1">'phone'</span><span class="o">]</span>  <span class="o">|</span> <span class="o">[</span><span class="mi">1</span><span class="o">]</span>
+<span class="o">}</span></code></pre></figure>
+
+<p>It can be run directly from IDE or by <code class="highlighter-rouge">./gradlew test</code></p>
+
+<h1 id="conclusion">Conclusion</h1>
+<p>Java 8 once again simplified code by using very basic functional approach. This little trick can be used not only for constructing QueryDSL Predicates but also for minimizing “wall” of repeatable null checking and action on value.</p>
+
+  </div>
+
+  
+  <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//dyszkiewicz.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+  
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading small-site-title">Dyszkiewicz;</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list footer-content">
+          <li>Based on <a href="http://github.com/hemangsk/Gravity">Gravity</a></li>
+          <li>Made with <i class="fa fa-heart"></i> on <a href="jekyll.com"><span style="color:black">Jekyll</a></span></li>
+
+
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2 footer-content">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jakubdyszkiewicz"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jakubdyszkiewicz</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jdyszkiewicz"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jdyszkiewicz</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3 site-description">
+        <!-- <p>Tech blog</p> -->
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
