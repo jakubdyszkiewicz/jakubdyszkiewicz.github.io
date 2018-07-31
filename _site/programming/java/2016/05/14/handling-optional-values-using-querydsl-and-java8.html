@@ -14,8 +14,8 @@
   <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
 
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="canonical" href="http://dyszkiewicz.me/programming/java/2016/05/14/handling-optional-values-using-querydsl-and-java8.html">
-  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://dyszkiewicz.me/feed.xml">
+  <link rel="canonical" href="http://localhost:4000/programming/java/2016/05/14/handling-optional-values-using-querydsl-and-java8.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
 </head>
 
 
@@ -131,7 +131,7 @@
 
     <span class="kd">private</span> <span class="kd">final</span> <span class="n">QPost</span> <span class="n">POST</span> <span class="o">=</span> <span class="n">QPost</span><span class="o">.</span><span class="na">post</span><span class="o">;</span>
 
-    <span class="kd">public</span> <span class="n">Predicate</span> <span class="n">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="n">Predicate</span> <span class="nf">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
         <span class="n">BooleanBuilder</span> <span class="n">builder</span> <span class="o">=</span> <span class="k">new</span> <span class="n">BooleanBuilder</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">());</span>
         <span class="k">if</span> <span class="o">(!</span><span class="n">StringUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">()))</span> <span class="o">{</span>
             <span class="n">builder</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">author</span><span class="o">.</span><span class="na">containsIgnoreCase</span><span class="o">(</span><span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">()));</span>
@@ -161,32 +161,32 @@
 
     <span class="kd">private</span> <span class="n">BooleanExpression</span> <span class="n">predicate</span><span class="o">;</span>
 
-    <span class="kd">public</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">BooleanExpression</span> <span class="n">predicate</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="nf">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">BooleanExpression</span> <span class="n">predicate</span><span class="o">)</span> <span class="o">{</span>
         <span class="k">this</span><span class="o">.</span><span class="na">predicate</span> <span class="o">=</span> <span class="n">predicate</span><span class="o">;</span>
     <span class="o">}</span>
 
-    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notNullAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">T</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">T</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="nf">notNullAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">T</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">T</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
         <span class="k">if</span> <span class="o">(</span><span class="n">value</span> <span class="o">!=</span> <span class="kc">null</span><span class="o">)</span> <span class="o">{</span>
-            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
         <span class="o">}</span>
         <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
     <span class="o">}</span>
 
-    <span class="kd">public</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">String</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="n">OptionalBooleanBuilder</span> <span class="nf">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">String</span><span class="o">,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">String</span> <span class="n">value</span><span class="o">)</span> <span class="o">{</span>
         <span class="k">if</span> <span class="o">(!</span><span class="n">StringUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">value</span><span class="o">))</span> <span class="o">{</span>
-            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">value</span><span class="o">)));</span>
         <span class="o">}</span>
         <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
     <span class="o">}</span>
 
-    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="n">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">collection</span><span class="o">)</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">OptionalBooleanBuilder</span> <span class="nf">notEmptyAnd</span><span class="o">(</span><span class="n">Function</span><span class="o">&lt;</span><span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;,</span> <span class="n">BooleanExpression</span><span class="o">&gt;</span> <span class="n">expressionFunction</span><span class="o">,</span> <span class="n">Collection</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span> <span class="n">collection</span><span class="o">)</span> <span class="o">{</span>
         <span class="k">if</span> <span class="o">(!</span><span class="n">CollectionUtils</span><span class="o">.</span><span class="na">isEmpty</span><span class="o">(</span><span class="n">collection</span><span class="o">))</span> <span class="o">{</span>
-            <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">collection</span><span class="o">)));</span>
+            <span class="k">return</span> <span class="k">new</span> <span class="nf">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">predicate</span><span class="o">.</span><span class="na">and</span><span class="o">(</span><span class="n">expressionFunction</span><span class="o">.</span><span class="na">apply</span><span class="o">(</span><span class="n">collection</span><span class="o">)));</span>
         <span class="o">}</span>
         <span class="k">return</span> <span class="k">this</span><span class="o">;</span>
     <span class="o">}</span>
 
-    <span class="kd">public</span> <span class="n">BooleanExpression</span> <span class="n">build</span><span class="o">()</span> <span class="o">{</span>
+    <span class="kd">public</span> <span class="n">BooleanExpression</span> <span class="nf">build</span><span class="o">()</span> <span class="o">{</span>
         <span class="k">return</span> <span class="n">predicate</span><span class="o">;</span>
     <span class="o">}</span>
 <span class="o">}</span></code></pre></figure>
@@ -197,8 +197,8 @@
 
     <span class="kd">private</span> <span class="kd">final</span> <span class="n">QPost</span> <span class="n">POST</span> <span class="o">=</span> <span class="n">QPost</span><span class="o">.</span><span class="na">post</span><span class="o">;</span>
 
-    <span class="kd">public</span> <span class="n">Predicate</span> <span class="n">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
-        <span class="k">return</span> <span class="k">new</span> <span class="n">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">())</span>
+    <span class="kd">public</span> <span class="n">Predicate</span> <span class="nf">build</span><span class="o">(</span><span class="n">PostFilter</span> <span class="n">filter</span><span class="o">)</span> <span class="o">{</span>
+        <span class="k">return</span> <span class="k">new</span> <span class="nf">OptionalBooleanBuilder</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">isNotNull</span><span class="o">())</span>
                 <span class="o">.</span><span class="na">notEmptyAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">author</span><span class="o">::</span><span class="n">containsIgnoreCase</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getAuthor</span><span class="o">())</span>
                 <span class="o">.</span><span class="na">notEmptyAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">title</span><span class="o">::</span><span class="n">containsIgnoreCase</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getTitle</span><span class="o">())</span>
                 <span class="o">.</span><span class="na">notNullAnd</span><span class="o">(</span><span class="n">POST</span><span class="o">.</span><span class="na">date</span><span class="o">::</span><span class="n">after</span><span class="o">,</span> <span class="n">filter</span><span class="o">.</span><span class="na">getFrom</span><span class="o">())</span>

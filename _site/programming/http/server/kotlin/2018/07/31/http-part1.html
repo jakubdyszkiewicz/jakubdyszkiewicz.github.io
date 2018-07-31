@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>The HTTP part 1 - Let&#39;s start small</title>
+  <meta name="description" content="We all use it, you used it when you entered here - The HTTP Protocol. If you are a developer there is a high chance that you are dealing with HTTP. It is so ...">
+  <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
+  <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/07/31/http-part1.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    
+<div class="wrapper">
+  <center> <a href="/index.html"><div class="site-title">   Dyszkiewicz; </div></a></center>
+</div>
+<div class="wrapper site-description">
+<center>  Tech blog </center>
+</div>
+<div class="wrapper">
+  <div class="trigger site-navigation">
+    <a class="page-link" href="/index.html">HOME</a>
+
+    
+    
+
+    <span class="exclamationMark">/</span><a class="page-link" href="/about/">About</a>
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>
+</div>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/07/31/http-part1.html">The HTTP part 1 - Let's start small</a></h1>
+  <center>  <p class="post-meta"><time datetime="2018-07-31T16:15:31+02:00" itemprop="datePublished">Jul 31, 2018</time></p>
+    
+   </center>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>We all use it, you used it when you entered here - The HTTP Protocol. If you are a developer there is a high chance that you are dealing with HTTP. It is so easy to write a web app nowadays. If you code let’s say in Java, you can just slap some Spring Boot dependencies, <code class="highlighter-rouge">@RestController</code> here <code class="highlighter-rouge">@GetMapping</code> there and BOOM - you’ve got a working application that communicates through HTTP. But how does it work under the hood?</p>
+
+<h2 id="why-am-i-writing-this">Why am I writing this?</h2>
+<p>I work as a developer in a team that provides integration with the infrastructure to our apps. I’ve debugged through HTTP Server quite a few times. I also deal with distributed systems that communicate through HTTP.
+However, I still feel that I don’t know that much about the internals of HTTP. And what is the better way to learn how HTTP works than to build server by myself?</p>
+
+<h2 id="the-plan">The plan</h2>
+<p>The plan is NOT to a create production-grade “unconditionally compliant” <a href="https://tools.ietf.org/html/rfc2616">RFC2616</a> HTTP server, because there are lots of them right now that have already proven to be great, like <a href="http://tomcat.apache.org/">Tomcat</a> or <a href="http://undertow.io/">Undertow</a>.
+I want to implement parts that interest me, especially communication. I could just read the RFC and study code of existing HTTP Servers, but the code is not that easy to understand and it’s more fun to build it ourselves and learn by mistakes.
+I also want to focus on things that can go wrong. If you know <a href="https://en.wikipedia.org/wiki/Fallacies_of_distributed_computing">8 fallacies of distributed computing</a> you know that things <em>will</em> go wrong, so my idea is to test some scenarios on a simple server that we can understand.</p>
+
+<h2 id="the-language">The language</h2>
+<p>Probably the best idea would be to write it in C because it is as close to the kernel as it can get but eventually, I want to build abstractions on top of it, so I’ll go for higher level language. I mostly code on JVM, therefore the natural choice is Java, but I prefer Kotlin due to <a href="https://kotlinlang.org/docs/reference/comparison-to-java.html">multiple</a> <a href="https://kotlinexpertise.com/kotlin-features-miss-java/">reasons</a> <a href="https://www.emanprague.com/en/blog/kotlin-top-10-features-youll-love/">that</a> <a href="https://android.jlelse.eu/kotlin-best-features-a3facac4d6fd">were</a> <a href="https://www.linkedin.com/pulse/top-10-features-kotlin-programming-language-over-java-kulshrestha/">already</a> <a href="https://medium.com/fuzz/kotlin-features-you-should-use-now-62d246d80a53">discussed</a> <a href="https://medium.com/@magnus.chatt/why-you-should-totally-switch-to-kotlin-c7bbde9e10d5">online</a>. I hope that extra syntax won’t be a problem to understand the bigger picture.
+I also want to explore more low-level abstraction available in JDK, those are often very well hidden behind walls of frameworks.</p>
+
+<h2 id="the-name">The name</h2>
+<p>The codename is “Not A Production HTTP Implementation”, in short - NAPHI (with silent H!).</p>
+
+<h2 id="the-basics">The basics</h2>
+<p>HTTP is a stateless protocol built on top of TCP/IP.  When you are entering a website, your browser connects to a server and send <em>a request</em> like “please give me a website under some address” or “please save my privacy preferences”. The server then processes request and answers with <em>a response</em> like “here is HTML representation of website” or “OK, I updated your preferences”.</p>
+
+<p>Currently, the newest version is <a href="https://github.com/bagder/http2-explained">HTTP/2.0</a>, but at first we will implement parts of HTTP/1.1 because it’s much easier and well known. I hope we will eventually implement some parts of HTTP/2.0.</p>
+
+<h2 id="hello-world-of-http">“Hello, World!” of HTTP</h2>
+<p>Let’s build a server that will respond with status code 200 (OK) and body of the legendary “Hello, World!” phrase.</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">package</span> <span class="nn">org.naphi</span>
+
+<span class="k">import</span> <span class="nn">org.slf4j.LoggerFactory</span>
+<span class="k">import</span> <span class="nn">java.io.PrintWriter</span>
+<span class="k">import</span> <span class="nn">java.net.ServerSocket</span>
+<span class="k">import</span> <span class="nn">java.net.Socket</span>
+<span class="k">import</span> <span class="nn">java.util.concurrent.Executors</span>
+<span class="k">import</span> <span class="nn">java.util.concurrent.TimeUnit</span>
+
+<span class="kd">class</span> <span class="nc">Server</span><span class="p">(</span><span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">):</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">Server</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">serverSocket</span> <span class="p">=</span> <span class="n">ServerSocket</span><span class="p">(</span><span class="n">port</span><span class="p">)</span> <span class="c1">// start a socket that handles incoming connections (1)</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">threadPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newSingleThreadExecutor</span><span class="p">()</span>
+
+    <span class="n">init</span> <span class="p">{</span>
+        <span class="n">threadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span> <span class="c1">// (6)</span>
+            <span class="k">try</span> <span class="p">{</span>
+                <span class="n">handleConnections</span><span class="p">()</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="s">"Problem while handling connections"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnections</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">while</span> <span class="p">(!</span><span class="n">serverSocket</span><span class="p">.</span><span class="n">isClosed</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">serverSocket</span><span class="p">.</span><span class="n">accept</span><span class="p">().</span><span class="n">use</span> <span class="p">{</span> <span class="c1">// (2)</span>
+                <span class="k">try</span> <span class="p">{</span>
+                    <span class="n">handleConnection</span><span class="p">(</span><span class="n">it</span><span class="p">)</span>
+                <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Problem while handling connection"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="p">}</span>
+            <span class="p">}</span> <span class="c1">// (5)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">// we should use a buffered reader, otherwise we will be reading byte by byte which is inefficient</span>
+        <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
+        <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
+
+        <span class="c1">// let's read just one line now, if we try to read everything we would block</span>
+        <span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readLine</span><span class="p">()</span> <span class="c1">// (3)</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Received request: {}"</span><span class="p">,</span> <span class="n">requestLine</span><span class="p">)</span>
+
+        <span class="n">output</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="s">"""
+            HTTP/1.1 200 OK
+
+            Hello, World!"""</span><span class="p">.</span><span class="n">trimIndent</span><span class="p">())</span> <span class="c1">// (4)</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span> <span class="c1">// make sure we will send the response</span>
+    <span class="p">}</span>
+
+    <span class="k">override</span> <span class="k">fun</span> <span class="n">close</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">serverSocket</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">threadPool</span><span class="p">.</span><span class="n">shutdown</span><span class="p">()</span>
+        <span class="n">threadPool</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">1</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">SECONDS</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">fun</span> <span class="n">main</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="n">Array</span><span class="p">&lt;</span><span class="n">String</span><span class="p">&gt;)</span> <span class="p">{</span>
+    <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>We can now go to <code class="highlighter-rouge">http://localhost:8090</code> in our browser and there we go, we’ve got a website!
+<img src="http://localhost:4000/assets/http1/hello_world.png" alt="http_hello_world" /></p>
+
+<p>Let’s review that. Firstly, we created an instance of <code class="highlighter-rouge">java.net.ServerSocket</code> which created a socket to listen to incoming connections <code class="highlighter-rouge">(1)</code>. Then after we received a connection (new socket) <code class="highlighter-rouge">(2)</code>, we read a line from a buffered stream <code class="highlighter-rouge">(3)</code>. After that, we printed to the output stream the response <code class="highlighter-rouge">(4)</code> and closed a socket (the <code class="highlighter-rouge">use {}</code> block is equivalent of Java’s try-with-resources) <code class="highlighter-rouge">(5)</code>.</p>
+
+<p>The Server is run on another thread <code class="highlighter-rouge">(6)</code>, but it isn’t multithreaded itself. In my opinion, it’s easier to use from the user perspective, which I will show later.</p>
+
+<p>Sadly, there is also a lot of try catching, we have to be careful.
+We have to make sure that errors from <code class="highlighter-rouge">handleConnection(Socket)</code> are logged and ignored. Otherwise, error from single request could blow up the whole server - it would stop listening to other connections.
+<code class="highlighter-rouge">handleConnections()</code> should also be wrapped in try-catch, because we are running it in <code class="highlighter-rouge">ExecutorService</code>. It will not log an exception by itself.</p>
+
+<h3 id="what-is-a-socket">What is a Socket?</h3>
+<p>A Socket is an interface for receiving and sending data over a network. When we create a Socket, we actually create a <a href="https://medium.com/@copyconstruct/nonblocking-i-o-99948ad7c957">file descriptor</a> (FD). A file descriptor is a special handler for I/O operation on I/O resources like files or network. On Linux, we can check FD under the <code class="highlighter-rouge">/proc/PID/fd/</code> path.</p>
+
+<p>There are different kinds of sockets, HTTP is a protocol over TCP so we will be using <code class="highlighter-rouge">SOCK_STREAM</code></p>
+
+<p>To run a server we would:</p>
+<ul>
+  <li>Create a socket with <a href="http://man7.org/linux/man-pages/man2/socket.2.html"><code class="highlighter-rouge">socket()</code></a> system call</li>
+  <li>Bind (assign) the socket to an address and port with <a href="http://man7.org/linux/man-pages/man2/bind.2.html"><code class="highlighter-rouge">bind()</code></a></li>
+  <li>Mark socket to listen to incoming connections with <a href="http://man7.org/linux/man-pages/man2/listen.2.html"><code class="highlighter-rouge">listen()</code></a></li>
+  <li>Accept incoming connections with <a href="http://man7.org/linux/man-pages/man2/accept.2.html"><code class="highlighter-rouge">accept()</code></a>. This would create a brand new socket (with new FD) for a new connection that was established</li>
+  <li>Send and receive data with <a href="http://man7.org/linux/man-pages/man3/recvfrom.3p.html"><code class="highlighter-rouge">recvfrom()</code></a>, <a href="http://man7.org/linux/man-pages/man3/sendto.3p.html"><code class="highlighter-rouge">sendto()</code></a></li>
+</ul>
+
+<p>We can check if that’s true by using <a href="https://strace.io/"><code class="highlighter-rouge">strace</code> - a tool for monitoring app’s system calls</a></p>
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vagrant@vagrant-ubuntu-trusty-64:~<span class="nv">$ </span>jps
+5616 jar <span class="c"># that's our process</span>
+5626 Jps
+vagrant@vagrant-ubuntu-trusty-64:~<span class="nv">$ </span><span class="nb">sudo </span>strace <span class="nt">-e</span> <span class="s1">'trace=socket,bind,listen,accept,sendto,recvfrom'</span> <span class="nt">-f</span> <span class="nt">-p</span> 5616
+Process 5616 attached with 10 threads
+
+<span class="c"># server is starting</span>
+<span class="c"># that's the ServerSocket(port) part</span>
+<span class="o">[</span>pid  5617] socket<span class="o">(</span>PF_INET6, SOCK_STREAM, IPPROTO_IP<span class="o">)</span> <span class="o">=</span> 5
+<span class="o">[</span>pid  5617] socket<span class="o">(</span>PF_INET6, SOCK_STREAM, IPPROTO_IP<span class="o">)</span> <span class="o">=</span> 6
+<span class="o">[</span>pid  5617] <span class="nb">bind</span><span class="o">(</span>6, <span class="o">{</span><span class="nv">sa_family</span><span class="o">=</span>AF_INET6, <span class="nv">sin6_port</span><span class="o">=</span>htons<span class="o">(</span>8090<span class="o">)</span>, inet_pton<span class="o">(</span>AF_INET6, <span class="s2">"::"</span>, &amp;sin6_addr<span class="o">)</span>, <span class="nv">sin6_flowinfo</span><span class="o">=</span>0, <span class="nv">sin6_scope_id</span><span class="o">=</span>0<span class="o">}</span>, 28<span class="o">)</span> <span class="o">=</span> 0
+<span class="o">[</span>pid  5617] listen<span class="o">(</span>6, 50<span class="o">)</span>               <span class="o">=</span> 0
+
+<span class="c"># connection is being made after curl localhost:8090</span>
+<span class="c"># that's the serverSocket.accept() and receiving/send msg part</span>
+<span class="o">[</span>pid  5617] accept<span class="o">(</span>6, <span class="o">{</span><span class="nv">sa_family</span><span class="o">=</span>AF_INET6, <span class="nv">sin6_port</span><span class="o">=</span>htons<span class="o">(</span>41660<span class="o">)</span>, inet_pton<span class="o">(</span>AF_INET6, <span class="s2">"::ffff:127.0.0.1"</span>, &amp;sin6_addr<span class="o">)</span>, <span class="nv">sin6_flowinfo</span><span class="o">=</span>0, <span class="nv">sin6_scope_id</span><span class="o">=</span>0<span class="o">}</span>, <span class="o">[</span>28]<span class="o">)</span> <span class="o">=</span> 7
+<span class="o">[</span>pid  5617] recvfrom<span class="o">(</span>7, <span class="s2">"GET / HTTP/1.1</span><span class="se">\r\n</span><span class="s2">User-Agent: curl"</span>..., 8192, 0, NULL, NULL<span class="o">)</span> <span class="o">=</span> 78
+<span class="o">[</span>pid  5617] sendto<span class="o">(</span>7, <span class="s2">"HTTP/1.1 200 OK</span><span class="se">\n\n</span><span class="s2">Hello, World!"</span>, 30, 0, NULL, 0<span class="o">)</span> <span class="o">=</span> 30
+</code></pre></div></div>
+
+<p>It is a bit easier on the client side:</p>
+<ul>
+  <li>Create socket with <code class="highlighter-rouge">socket()</code></li>
+  <li>Connect to server with <a href="http://man7.org/linux/man-pages/man2/connect.2.html"><code class="highlighter-rouge">connect()</code></a></li>
+  <li>Send and receive data with <code class="highlighter-rouge">recvfrom()</code> and <code class="highlighter-rouge">sendto()</code></li>
+</ul>
+
+<div class="language-shell highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vagrant@vagrant-ubuntu-trusty-64:~<span class="nv">$ </span><span class="nb">sudo </span>strace <span class="nt">-e</span> <span class="s1">'trace=socket,connect,sendto,recvfrom,close'</span> curl http://localhost:8090
+...
+socket<span class="o">(</span>PF_INET6, SOCK_DGRAM, IPPROTO_IP<span class="o">)</span> <span class="o">=</span> 3
+close<span class="o">(</span>3<span class="o">)</span>                                <span class="o">=</span> 0
+socket<span class="o">(</span>PF_INET, SOCK_STREAM, IPPROTO_TCP<span class="o">)</span> <span class="o">=</span> 3
+connect<span class="o">(</span>3, <span class="o">{</span><span class="nv">sa_family</span><span class="o">=</span>AF_INET, <span class="nv">sin_port</span><span class="o">=</span>htons<span class="o">(</span>8090<span class="o">)</span>, <span class="nv">sin_addr</span><span class="o">=</span>inet_addr<span class="o">(</span><span class="s2">"127.0.0.1"</span><span class="o">)}</span>, 16<span class="o">)</span> <span class="o">=</span> <span class="nt">-1</span> EINPROGRESS <span class="o">(</span>Operation now <span class="k">in </span>progress<span class="o">)</span>
+sendto<span class="o">(</span>3, <span class="s2">"GET / HTTP/1.1</span><span class="se">\r\n</span><span class="s2">User-Agent: curl"</span>..., 78, MSG_NOSIGNAL, NULL, 0<span class="o">)</span> <span class="o">=</span> 78
+recvfrom<span class="o">(</span>3, <span class="s2">"HTTP/1.1 200 OK</span><span class="se">\n\n</span><span class="s2">Hello, World!"</span>, 16384, 0, NULL, NULL<span class="o">)</span> <span class="o">=</span> 30
+recvfrom<span class="o">(</span>3, <span class="s2">""</span>, 16384, 0, NULL, NULL<span class="o">)</span>   <span class="o">=</span> 0
+close<span class="o">(</span>3<span class="o">)</span>                                <span class="o">=</span> 0
+</code></pre></div></div>
+
+<h2 id="the-tests">The tests</h2>
+<p>Normally I would choose Groovy + <a href="http://spockframework.org/">Spock</a>, but I don’t really like the integration with Kotlin code. I would like to use <a href="https://github.com/kotlintest/kotlintest">Kotlin Test</a>, but I can’t stand that <a href="https://github.com/kotlintest/kotlintest/issues/184">I cannot run a single test from IDE</a>. I will stick to Kotlin + JUnit + <a href="http://joel-costigliola.github.io/assertj/">AssertJ</a> for now. I may replace it later.</p>
+
+<p>To test our server, we have to use an HTTP Client. Usually, I would use a wrapper like <a href="https://spring.io/guides/gs/consuming-rest/"><code class="highlighter-rouge">RestTemplate</code></a> or <a href="http://square.github.io/retrofit/"><code class="highlighter-rouge">Retrofit</code></a>, because of nicer API, but let just use bare bone <a href="https://docs.oracle.com/javase/8/docs/api/java/net/HttpURLConnection.html"><code class="highlighter-rouge">HttpURLConnection</code></a> from JDK. It’s a nice occasion to explore how it works.</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">ServerTest</span> <span class="p">{</span>
+
+    <span class="n">@Test</span>
+    <span class="k">fun</span> <span class="err">`</span><span class="n">server</span> <span class="n">should</span> <span class="k">return</span> <span class="n">OK</span> <span class="n">hello</span> <span class="n">world</span> <span class="n">response</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+        <span class="c1">// given</span>
+        <span class="kd">val</span> <span class="py">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">)</span>
+
+        <span class="c1">// when</span>
+        <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">URL</span><span class="p">(</span><span class="s">"http://localhost:8090/"</span><span class="p">).</span><span class="n">openConnection</span><span class="p">()</span> <span class="k">as</span> <span class="n">HttpURLConnection</span>
+        <span class="n">connection</span><span class="p">.</span><span class="n">connect</span><span class="p">()</span>
+        <span class="kd">val</span> <span class="py">responseCode</span> <span class="p">=</span> <span class="n">connection</span><span class="p">.</span><span class="n">responseCode</span>
+        <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="n">connection</span><span class="p">.</span><span class="n">inputStream</span><span class="p">.</span><span class="n">bufferedReader</span><span class="p">().</span><span class="n">readText</span><span class="p">()</span>
+        <span class="n">connection</span><span class="p">.</span><span class="n">disconnect</span><span class="p">()</span>
+
+        <span class="c1">// then</span>
+        <span class="n">assertThat</span><span class="p">(</span><span class="n">responseCode</span><span class="p">).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">200</span><span class="p">)</span>
+        <span class="n">assertThat</span><span class="p">(</span><span class="n">response</span><span class="p">).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="s">"Hello, World!"</span><span class="p">)</span>
+
+        <span class="c1">// cleanup</span>
+        <span class="n">server</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>Thanks to the fact that our server is listening on connections on another thread, we can start it and immediately make a request. Otherwise, we would have to start it in executor service. This may not be a problem now, but we will save some code later with multiple tests.</p>
+
+<h2 id="whats-next">What’s next?</h2>
+<p>We managed to build a simple HTTP server! The next step would be to look at our implementation and see what is going on when multiple connections are established.</p>
+
+<h2 id="code-samples">Code samples</h2>
+<p>The code for this part is available <a href="https://github.com/jakubdyszkiewicz/naphi/tree/http-1-simple-http-server">on my Github</a>.</p>
+
+  </div>
+
+  
+  <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//dyszkiewicz.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+  
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading small-site-title">Dyszkiewicz;</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list footer-content">
+          <li>Based on <a href="http://github.com/hemangsk/Gravity">Gravity</a></li>
+          <li>Made with <i class="fa fa-heart"></i> on <a href="jekyll.com"><span style="color:black">Jekyll</a></span></li>
+
+
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2 footer-content">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jakubdyszkiewicz"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jakubdyszkiewicz</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jdyszkiewicz"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jdyszkiewicz</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3 site-description">
+        <!-- <p>Tech blog</p> -->
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
