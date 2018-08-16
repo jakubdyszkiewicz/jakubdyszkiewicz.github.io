@@ -6,7 +6,7 @@ categories: ["programming", "http", "server", "kotlin"]
 comments: true
 ---
 ## Mutiple concurrent connections
-What happens when someone asks for a website? Our server is constantly listening for an incoming connection, then it processes a request, prepare and write a response, close a connection and listen to another one. All of this work is done on one thread.
+What happens when someone asks for a website? Our server is constantly listening for an incoming connection, then it processes a request, prepares and writes a response, closes a connection and listens to another one. All of this work is done on one thread.
 What if there is another incoming request, but we are in the middle of preparing a response and not listening for an incoming connection? **Is it queued? If so, where?**
 
 ## The backlog
@@ -29,7 +29,7 @@ public ServerSocket(int port, int backlog) throws IOException {
 There is a backlog parameter that is passed to the `listen()` system call underneath. The queue is not managed by our application but by an operating system.
 
 #### Default value
-Is 50 a good default value? As with every default value - you don’t know unless you measure it. Let’s say you are the only user of the server and you are not making concurrent requests? Then maybe smaller value would be just fine. Or maybe, you expect users to spam your server with thousands of requests?  In this case, the higher value would be recommended. The point is that it’s good to know that there is such value and you can control it per your case.
+Is 50 a good default value? As with every default value - you don’t know unless you measure it. Let’s say you are the only user of the server and you are not making concurrent requests, then maybe a smaller value would be just fine. Or maybe, you expect users to spam your server with thousands of requests?  In this case, a higher value would be recommended. The point is that it’s good to know that there is such value and you can control it per your case.
 
 #### How can we check the queue utilization?
 I don't belive there is an API in Java for this, but you can just run `lsof` to check open connections on given port.
