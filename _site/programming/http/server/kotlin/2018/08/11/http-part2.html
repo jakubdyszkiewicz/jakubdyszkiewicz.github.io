@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>The HTTP part 2 - Connections Queue</title>
+  <meta name="description" content="Mutiple concurrent connectionsWhat happens when someone asks for a website? Our server is constantly listening for an incoming connection, then it processes ...">
+  <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
+  <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/08/11/http-part2.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    
+<div class="wrapper">
+  <center> <a href="/index.html"><div class="site-title">   Dyszkiewicz; </div></a></center>
+</div>
+<div class="wrapper site-description">
+<center>  Tech blog </center>
+</div>
+<div class="wrapper">
+  <div class="trigger site-navigation">
+    <a class="page-link" href="/index.html">HOME</a>
+
+    
+    
+
+    <span class="exclamationMark">/</span><a class="page-link" href="/about/">About</a>
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>
+</div>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/08/11/http-part2.html">The HTTP part 2 - Connections Queue</a></h1>
+  <center>  <p class="post-meta"><time datetime="2018-08-11T12:20:31+02:00" itemprop="datePublished">Aug 11, 2018</time></p>
+    
+   </center>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="mutiple-concurrent-connections">Mutiple concurrent connections</h2>
+<p>What happens when someone asks for a website? Our server is constantly listening for an incoming connection, then it processes a request, prepares and writes a response, closes a connection and listens to another one. All of this work is done on one thread.
+What if there is another incoming request, but we are in the middle of preparing a response and not listening for an incoming connection? <strong>Is it queued? If so, where?</strong></p>
+
+<h2 id="the-backlog">The backlog</h2>
+<p>Incoming connections are queued.
+When we created a socket for listening connections we used a constructor <code class="highlighter-rouge">ServerSocket(port)</code>  that uses another constructor.</p>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">public</span> <span class="nf">ServerSocket</span><span class="o">(</span><span class="kt">int</span> <span class="n">port</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">(</span><span class="n">port</span><span class="o">,</span> <span class="mi">50</span><span class="o">,</span> <span class="kc">null</span><span class="o">);</span>
+<span class="o">}</span>
+
+<span class="cm">/**
+* @param      backlog  requested maximum length of the queue of incoming
+*                      connections.
+*/</span>
+<span class="kd">public</span> <span class="nf">ServerSocket</span><span class="o">(</span><span class="kt">int</span> <span class="n">port</span><span class="o">,</span> <span class="kt">int</span> <span class="n">backlog</span><span class="o">)</span> <span class="kd">throws</span> <span class="n">IOException</span> <span class="o">{</span>
+    <span class="k">this</span><span class="o">(</span><span class="n">port</span><span class="o">,</span> <span class="n">backlog</span><span class="o">,</span> <span class="kc">null</span><span class="o">);</span>
+<span class="o">}</span>
+</code></pre></div></div>
+
+<p>There is a backlog parameter that is passed to the <code class="highlighter-rouge">listen()</code> system call underneath. The queue is not managed by our application but by an operating system.</p>
+
+<h4 id="default-value">Default value</h4>
+<p>Is 50 a good default value? As with every default value - you don’t know unless you measure it. Let’s say you are the only user of the server and you are not making concurrent requests, then maybe a smaller value would be just fine. Or maybe, you expect users to spam your server with thousands of requests?  In this case, a higher value would be recommended. The point is that it’s good to know that there is such value and you can control it per your case.</p>
+
+<h4 id="how-can-we-check-the-queue-utilization">How can we check the queue utilization?</h4>
+<p>I don’t belive there is an API in Java for this, but you can just run <code class="highlighter-rouge">lsof</code> to check open connections on given port.</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>$ lsof -i :8090
+COMMAND   PID              USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+java    23785 jakub.dyszkiewicz   40u  IPv6 0x8bf0b7d1c46b6bd3      0t0  TCP *:8090 (LISTEN)
+java    23785 jakub.dyszkiewicz   44u  IPv6 0x8bf0b7d1c46b99d3      0t0  TCP localhost:57990-&gt;localhost:8090 (ESTABLISHED)
+java    23785 jakub.dyszkiewicz   45u  IPv6 0x8bf0b7d1e55ef553      0t0  TCP localhost:8090-&gt;localhost:57990 (ESTABLISHED)
+java    23785 jakub.dyszkiewicz   46u  IPv6 0x8bf0b7d1e55ec753      0t0  TCP localhost:57991-&gt;localhost:8090 (ESTABLISHED)
+</code></pre></div></div>
+
+<h4 id="why-cant-we-just-max-out-this-value-what-is-the-cost">Why can’t we just max out this value? What is the cost?</h4>
+<p>When a connection is queued, it is established first. Last time, we learned that every new connection is equal to a new file descriptor and there is a limit of open file descriptors in the operating system. The limit is set because every FD costs the memory. I’ve seen going as far as <a href="http://goroutines.com/10m">10M open connections</a>, but with 200GB memory machine! If we are drowning in pending requests, we should probably look at another way to solve this problem. Maybe we need to scale horizontally, or maybe we are in the middle of the DDoS.</p>
+
+<h4 id="whats-the-default-in-other-servers">What’s the default in other servers?</h4>
+<p>I was having trouble to find this, but to be honest - it doesn’t matter that much. Most popular servers are multithreaded, in this model, connections are accepted as fast as possible and delegated to other threads so the backlog won’t be a bottleneck.</p>
+
+<h3 id="dropping-connections">Dropping connections</h3>
+<p>Right now our server can hold 50 connections in the queue. Let’s parametrise it and change it to 1 and see if the third connection is dropped.</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">Server</span><span class="p">(</span>
+        <span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">,</span>
+        <span class="kd">val</span> <span class="py">maxIncomingConnections</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">1</span><span class="p">):</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">serverSocket</span> <span class="p">=</span> <span class="n">ServerSocket</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">maxIncomingConnections</span><span class="p">)</span>
+
+    <span class="o">..</span><span class="p">.</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
+        <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
+
+        <span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readLine</span><span class="p">()</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Received request: {}"</span><span class="p">,</span> <span class="n">requestLine</span><span class="p">)</span>
+        <span class="n">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="m">5000</span><span class="p">)</span> <span class="c1">// sleeping for 5s before writing response</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="s">"""
+            HTTP/1.1 200 OK
+
+            Hello, World!"""</span><span class="p">.</span><span class="n">trimIndent</span><span class="p">())</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="o">..</span><span class="p">.</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>Now we should be able to fire 3 requests concurrently and see a problem. Let’s test it!</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="n">server</span> <span class="n">should</span> <span class="n">refuse</span> <span class="n">to</span> <span class="n">accept</span> <span class="n">more</span> <span class="n">connections</span> <span class="n">that</span> <span class="n">maxIncommingConnections</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="kd">val</span> <span class="py">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">maxIncomingConnections</span> <span class="p">=</span> <span class="m">1</span><span class="p">)</span>
+
+    <span class="c1">// when</span>
+    <span class="kd">val</span> <span class="py">completedRequest</span> <span class="p">=</span> <span class="n">LongAdder</span><span class="p">()</span> <span class="c1">// we will be adding from multiple threads</span>
+    <span class="c1">// we are starting 3 requests simultaneously</span>
+    <span class="kd">val</span> <span class="py">clientsThreadPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newFixedThreadPool</span><span class="p">(</span><span class="m">3</span><span class="p">)</span>
+    <span class="n">repeat</span><span class="p">(</span><span class="n">times</span> <span class="p">=</span> <span class="m">3</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">clientsThreadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
+            <span class="k">try</span> <span class="p">{</span>
+                <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">URL</span><span class="p">(</span><span class="s">"http://localhost:8090/"</span><span class="p">).</span><span class="n">openConnection</span><span class="p">()</span> <span class="k">as</span> <span class="n">HttpURLConnection</span>
+                <span class="n">connection</span><span class="p">.</span><span class="n">connectTimeout</span> <span class="p">=</span> <span class="m">1000</span>
+                <span class="n">connection</span><span class="p">.</span><span class="n">connect</span><span class="p">()</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">responseCode</span> <span class="p">==</span> <span class="m">200</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">completedRequest</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span>
+                <span class="p">}</span>
+                <span class="n">connection</span><span class="p">.</span><span class="n">disconnect</span><span class="p">()</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">e</span><span class="p">.</span><span class="n">printStackTrace</span><span class="p">()</span>
+                <span class="k">throw</span> <span class="n">e</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="m">500</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="c1">// it should be enough for 3 request to complete if limiting was somehow broken</span>
+    <span class="n">clientsThreadPool</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">20</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">SECONDS</span><span class="p">)</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">completedRequest</span><span class="p">.</span><span class="n">sum</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">2</span><span class="p">)</span>
+
+    <span class="c1">// cleanup</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>And it fails!</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>org.junit.ComparisonFailure: 
+Expected :2L
+Actual   :3L
+</code></pre></div></div>
+
+<p>3 requests were completed. Wait, but the third connection should be dropped! What’s going on? To debug what happened we can trace what packets were sent, but first…</p>
+
+<h3 id="quick-basics-of-tcp">Quick basics of TCP</h3>
+<p>TCP is a protocol on the Transport Layer in the 7 layers of OSI.  It lets you not to worry about things like missing packets or invalid order of packets. If your packet is not delivered, it will be retransmitted.
+In order to send something over TCP, you have to first establish a connection. To do that:</p>
+<ul>
+  <li>Client sends an <code class="highlighter-rouge">SYN</code> segment to request a connection</li>
+  <li>Server answers with an <code class="highlighter-rouge">SYN-ACK</code> meaning that it also request a connection and acknowledge the client’s request</li>
+  <li>Client sends an <code class="highlighter-rouge">ACK</code> segment to acknowledge servers’ request</li>
+</ul>
+
+<p>The connection is now established, this is when a socket is created. Both parties can now send data over the connection. Standard HTTP flow this would look like this:</p>
+<ul>
+  <li>Client sends a segment with a request</li>
+  <li>Server sends an <code class="highlighter-rouge">ACK</code> segment confirming that it got the data</li>
+  <li>Server now sends a segment with a response</li>
+  <li>Client sends an <code class="highlighter-rouge">ACK</code> segment confirming that it got the data</li>
+</ul>
+
+<p>At some point, we want to close the connection (immediately after data exchange in our case - at least for now). To do that:</p>
+<ul>
+  <li>Server sends a <code class="highlighter-rouge">FIN,ACK</code> segment to signal that it’s closing the connection</li>
+  <li>Client sends an <code class="highlighter-rouge">ACK</code> that it gets that information</li>
+  <li>Now Client sends a <code class="highlighter-rouge">FIN,ACK</code> to signal that it’s closing the connection</li>
+  <li>And Server responds with an <code class="highlighter-rouge">ACK</code>, the connection is now closed</li>
+</ul>
+
+<p>There is also <code class="highlighter-rouge">RST</code> segment - reset the connection. It is sent when something will go wrong like the client sending data packages after a connection is closed.</p>
+
+<p>Let’s see that in action in <a href="https://www.wireshark.org/">Wireshark</a> - a tool for network monitoring. We are going to monitor just one request for now
+<a href="http://localhost:4000/assets/http2/onerequest.png"><img src="http://localhost:4000/assets/http2/onerequest.png" alt="one_request" /></a></p>
+
+<p><code class="highlighter-rouge">60328</code> is the port of the client and <code class="highlighter-rouge">8090</code> is the port of the server.</p>
+
+<p>From 1 to 3 are packets responsible for the connection establishment.</p>
+
+<p>The 4th packet is a TCP Window Update, which tells a client how much more bytes the server can yet receive before it’s full.</p>
+
+<p>5 and 6 are a request to the server.</p>
+
+<p>7 and 8 are a response to the client.</p>
+
+<p>From 9 to 12 we can see sequence for closing the connection from both sides</p>
+
+<h3 id="back-to-3-requests">Back to 3 requests</h3>
+<p>Ok, once we get comfortable with using Wireshark, we can run it for 3 requests.
+<a href="http://localhost:4000/assets/http2/threerequests.png"><img src="http://localhost:4000/assets/http2/threerequests.png" alt="three_requests" /></a></p>
+
+<p>Oh, that’s right! When the client sends the third connection request, the server does not respond with <code class="highlighter-rouge">RST</code> or <code class="highlighter-rouge">FIN</code>, it just ignores this package. The client did not receive <code class="highlighter-rouge">SYN-ACK</code> after its <code class="highlighter-rouge">SYN</code> segment, so it assumes that the package is lost which results in firing standard TCP retransmission.  That’s actually great! If the server had returned <code class="highlighter-rouge">RST</code> then we would have to implement retry logic on the client side, but now Operating System is doing it for us.</p>
+
+<p>We can also look on <a href="http://man7.org/linux/man-pages/man2/listen.2.html"><code class="highlighter-rouge">listen()</code></a> system call documentation</p>
+<blockquote>
+  <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>   The backlog argument defines the maximum length to which the queue of
+   pending connections for sockfd may grow.  If a connection request
+   arrives when the queue is full, the client may receive an error with
+   an indication of ECONNREFUSED or, if the underlying protocol supports
+   retransmission, the request may be ignored so that a later reattempt
+   at connection succeeds.
+</code></pre></div>  </div>
+</blockquote>
+
+<p>Which confirms the behaviour we observed.</p>
+
+<h4 id="is-it-ok-to-spam-retransmission-packets-and-wait-for-connection-forever">Is it ok to spam retransmission packets and wait for connection forever?</h4>
+<p>You can see that even in our case retransmission is run every 100ms, but then backs of to about 3s between last retransmissions (look at time column on the last screenshot), so our server is not drowning with useless packets.</p>
+
+<p>However, waiting forever is a problem. Let’s say we’ve got distributed system of <em>Orders</em> and <em>Users</em>. A user request an <em>Orders</em> for buying an offer, then <em>Orders</em> asks <em>Users</em> if the user is not banned. If <em>Users</em> is under heavy load. and can’t accept connections, <em>Orders</em> blocks and waits forever. Now the connections in <em>Orders</em> are blocked so it cannot accept anymore and the whole platform is essentially dead. That’s why after some period of time (or just period?), we should assume that server won’t respond. This is called a <em>connection timeout</em> and you should always set it in your HTTP Client. I will cover more when we will start building our HTTP Client.</p>
+
+<h2 id="test-fix">Test fix</h2>
+<p>Let’s add connection timeout to our client</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="o">..</span><span class="p">.</span>
+            <span class="n">clientsThreadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
+                <span class="k">try</span> <span class="p">{</span>
+                    <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">URL</span><span class="p">(</span><span class="err">“</span><span class="n">http</span><span class="p">:</span><span class="c1">//localhost:8090/“).openConnection() as HttpURLConnection</span>
+                    <span class="n">connection</span><span class="p">.</span><span class="n">connectTimeout</span> <span class="p">=</span> <span class="m">1000</span>
+                    <span class="n">connection</span><span class="p">.</span><span class="n">connect</span><span class="p">()</span>
+<span class="o">..</span><span class="p">.</span>
+</code></pre></div></div>
+<p>And now the test passes! We can see <code class="highlighter-rouge">java.net.SocketTimeoutException: connect timed out</code> on output.</p>
+
+<h2 id="summary">Summary</h2>
+<p>We learned how our single-threaded server handles multiple connections. We learned the basic flow of TCP and we used Wireshark which is extremely helpful for debugging server and client behaviour. We actually didn’t improve anything in our server, we only learned deeper how it works already. Next up, we’re going to build some abstractions. Our server will be able to respond with something else than <code class="highlighter-rouge">Hello, World!</code> and we will get rid of hardcoded <code class="highlighter-rouge">Thread.sleep</code>  That will help us to test server behaviour in the next scenarios.</p>
+
+<p>As always, code samples are <a href="https://github.com/jakubdyszkiewicz/naphi/tree/http-2-connections-queue">available on my github</a>.</p>
+
+  </div>
+
+  
+  <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//dyszkiewicz.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+  
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading small-site-title">Dyszkiewicz;</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list footer-content">
+          <li>Based on <a href="http://github.com/hemangsk/Gravity">Gravity</a></li>
+          <li>Made with <i class="fa fa-heart"></i> on <a href="jekyll.com"><span style="color:black">Jekyll</a></span></li>
+
+
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2 footer-content">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jakubdyszkiewicz"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jakubdyszkiewicz</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jdyszkiewicz"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jdyszkiewicz</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3 site-description">
+        <!-- <p>Tech blog</p> -->
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
