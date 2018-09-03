@@ -200,3 +200,17 @@ And now the test passes! We can see `java.net.SocketTimeoutException: connect ti
 We learned how our single-threaded server handles multiple connections. We learned the basic flow of TCP and we used Wireshark which is extremely helpful for debugging server and client behaviour. We actually didn’t improve anything in our server, we only learned deeper how it works already. Next up, we’re going to build some abstractions. Our server will be able to respond with something else than `Hello, World!` and we will get rid of hardcoded `Thread.sleep`  That will help us to test server behaviour in the next scenarios.
 
 As always, code samples are [available on my github](https://github.com/jakubdyszkiewicz/naphi/tree/http-2-connections-queue).
+
+# Other articles of the series
+This article is a part of the HTTP series
+<ul>
+  {% for post in site.categories.['http'] %}
+    <li>
+        {% if post.title == page.title %}
+            {{ post.title }}
+        {% else %}
+            <a href="{{ post.url }}">{{ post.title }}</a>
+        {% endif %}
+    </li>
+  {% endfor %}
+</ul>

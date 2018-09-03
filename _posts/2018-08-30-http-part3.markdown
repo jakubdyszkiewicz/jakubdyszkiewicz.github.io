@@ -1,0 +1,397 @@
+---
+layout: post
+title:  "The HTTP part 3 - Parsing request & response"
+date:   2018-09-03 15:50:31 +0530
+categories: ["programming", "http", "server", "kotlin"]
+comments: true
+---
+Previously we were looking at sockets, connections, TCP and Wireshark. This time, we will work on higher level stuff, there will be a lot of Kotlin code. But first…
+
+## The theory
+Let’s look at the anatomy of HTTP Request and HTTP Response
+
+### HTTP Request
+From the [RFC2616](https://tools.ietf.org/html/rfc2616#section-5) we can read that a request looks like this.
+``` 
+        Request       = Request-Line              ; Section 5.1
+                        *(( general-header        ; Section 4.5
+                         | request-header         ; Section 5.3
+                         | entity-header ) CRLF)  ; Section 7.1
+                        CRLF
+                        [ message-body ]          ; Section 4.3
+
+```
+First, we’ve got mandatory *Request-Line*, then optional headers and after that - optional message body preceded by a mandatory newline character.
+
+#### Request Line
+``` 
+		 Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+
+       Method         = "OPTIONS"                ; Section 9.2
+                      | "GET"                    ; Section 9.3
+                      | "HEAD"                   ; Section 9.4
+                      | "POST"                   ; Section 9.5
+                      | "PUT"                    ; Section 9.6
+                      | "DELETE"                 ; Section 9.7
+                      | "TRACE"                  ; Section 9.8
+                      | "CONNECT"                ; Section 9.9
+                      | extension-method
+       extension-method = token
+
+       Request-URI    = "*" | absoluteURI | abs_path | authority
+```
+*Request-Line* contains *Method*, *Request-URI* and *HTTP-Version* separated by spaces and ended by new line character. 
+The method is one of the methods, you’ve probably encountered like `GET` or `POST`.
+
+*Request-URI* is the `/users/3` path in `http://localhost:8090/users/3` URL. Although we should support other options values like an absolute path or `*` for `OPTIONS` method, we will just use absolute paths.
+
+*HTTP-Version* is self-explanatory. Example values are `HTTP/1.0`, `HTTP1.1`. We will support `HTTP/1.1` for now.
+
+Sample Request Line looks like this: `GET /users/3 HTTP/1.1`
+
+#### Request Headers
+Headers are key-value pairs of metadata of a request. They can be divided into 3 categories - General, Request, Entity. Luckily, it doesn’t matter in which order they are delivered from parsing perspective.
+
+It’s worth to mention that a header key can have multiple values separated by commas. A sender should not send multiple pairs with the same key, but it can (`Set-Cookie` is a common exception) so we have to support it.
+
+Sample headers look like this:
+```
+accept: application/json
+accept-encoding: gzip, deflate, br
+accept-language: pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7
+content-type: application/json
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36
+```
+
+#### About header case sensitivity
+Is `accept-language` and `Accept-Language` the same? Should two pairs of headers, one with lowercase, another with uppercase be merged into one?
+According to [spec](https://tools.ietf.org/html/rfc2616#section-4.2)
+> Each header field consists of a name followed by a colon (":") and the field value. Field names are case-insensitive.
+
+I assume that the answers are: yes, they are the same and they should be merged. 
+
+What is more interesting, [HTTP/2.0 spec states](https://tools.ietf.org/html/rfc7540#section-8.1.2)
+> Just as in HTTP/1.x, header field names are strings of ASCII characters that are compared in a case-insensitive fashion. However, header field names MUST be converted to lowercase prior to their encoding in HTTP/2. A request or response containing uppercase header field names MUST be treated as malformed
+
+To avoid the confusion, we will keep our headers lowercase.
+
+#### Sample Request
+Putting it all together - a sample request would look like this
+```
+PUT /users/3 HTTP/1.1
+accept: application/json
+accept-encoding: gzip, deflate, br
+accept-language: pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7
+content-type: application/json
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36
+
+{"name": "John"}
+```
+
+### HTTP Response
+Response structure looks similar to request, but instead of a *Request-Line*, there is a *Status-Line*.
+``` 
+       Response      = Status-Line               ; Section 6.1
+                       *(( general-header        ; Section 4.5
+                        | response-header        ; Section 6.2
+                        | entity-header ) CRLF)  ; Section 7.1
+                       CRLF
+                       [ message-body ]          ; Section 7.2
+
+		 Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF
+```
+
+#### Status Line
+Status Line must contain *HTTP-Version*, *Status-Code* and *Reason-Phrase* divided by spaces and ended by new line character. Sample status line looks like this: `HTTP/1.1 200 OK`
+#### Sample response
+```
+HTTP/1.1 200 OK
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8
+accept-encoding: gzip, deflate, br
+accept-language: pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7
+user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/68.0.3440.106 Safari/537.36
+
+{"id": "123", "name": "John"}
+```
+
+Now we can move on to implementation.
+## Data structures
+To begin with, we define structures for request and response.
+```kotlin
+const val PROTOCOL = "HTTP/1.1"
+
+data class Request(
+        val path: String,
+        val method: RequestMethod,
+        val headers: HttpHeaders = HttpHeaders(),
+        val body: String? = null) {
+    companion object
+}
+
+data class Response(
+        val status: Status,
+        val headers: HttpHeaders = HttpHeaders(),
+        val body: String? = null)
+
+enum class RequestMethod {
+    GET,
+    HEAD,
+    OPTIONS,
+    POST,
+    PUT,
+    DELETE,
+    TRACE,
+    CONNECT;
+
+    companion object {
+        fun valueOfOrNull(method: String): RequestMethod? = values().firstOrNull { it.name == method }
+    }
+}
+
+enum class Status(val code: Int, val reason: String) {
+    OK(200, "OK"),
+    BAD_REQUEST(400, "Bad Request"),
+    INTERNAL_SERVER_ERROR(500, "Internal Server Error")
+    // todo more status codes
+}
+
+class HttpHeaders(mapOfHeaders: Map<String, Collection<String>> = emptyMap()) {
+
+    private val mapOfHeaders: Map<String, Collection<String>> = mapOfHeaders.mapKeys { (k, _) -> k.toLowerCase() } //1
+
+    constructor(vararg pairs: Pair<String, String>)
+            : this(pairs.asSequence()
+            .groupBy { (name, _) -> name } // 2
+            .mapValues { (_, namesWithValues) -> namesWithValues.map { (_, values) -> values } }
+            .toMap())
+
+    val size = this.mapOfHeaders.size
+
+    val contentLength: Int = this["content-length"].firstOrNull()?.toInt() ?: 0
+
+    fun asSequence() = mapOfHeaders.asSequence()
+    operator fun get(key: String): Collection<String> = mapOfHeaders[key.toLowerCase()] ?: emptyList()
+    operator fun plus(pair: Pair<String, String>) = HttpHeaders(mapOfHeaders + (pair.first to listOf(pair.second)))
+}
+
+typealias Handler = (Request) -> Response
+```
+
+Not much going on here. Just plain data classes and enums. Mind you that headers are not a simple list of key and value, because you can define multiple values for one key. Sadly, we still don’t have [`Multimap`](https://google.github.io/guava/releases/23.0/api/docs/com/google/common/collect/Multimap.html) data structure in JDK, nor in Kotlin standard library.
+We lowercase every header (1) at the input of `HttpHeaders` class.
+We also group headers (2) by name and convert to map in pair constructor so we can call it like this:
+`HttpHeaders("content-type" to "application/json")` or `HttpHeaders("set-cookie", "a=x", "set-cookie", "b=y")`
+
+## Request parser
+Let’s look at a code that is responsible for parsing a request
+
+```kotlin
+private val headerRegex = "^(.+): (.+)$".toRegex()
+private val requestLineRegex = "^(.+) (.+) (.+)$".toRegex()
+
+class RequestParseException(msg: String): RuntimeException(msg)
+
+private data class RequestLine(val method: RequestMethod, val path: String, val protocol: String)
+
+fun Request.Companion.fromRaw(input: BufferedReader): Request {
+    val requestLine = parseRequestLine(input)
+    val headers = parseHeaders(input)
+    val body = parseBody(headers, input)
+    return Request(requestLine.path, requestLine.method, headers, body)
+}
+
+// 3
+private fun parseRequestLine(input: BufferedReader): RequestLine {
+    val requestLine = input.readLine() ?: throw RequestParseException("Request must not be empty")
+    val (methodRaw, path, protocol) = requestLineRegex.find(requestLine)?.destructured
+            ?: throw RequestParseException("Invalid request line. It should match ${requestLineRegex.pattern} pattern")
+    val method = RequestMethod.valueOfOrNull(methodRaw) ?: throw RequestParseException("Method $methodRaw is not supported")
+    if (protocol != PROTOCOL) {
+        throw RequestParseException("Invalid protocol. Only $PROTOCOL is supported")
+    }
+    return RequestLine(method, path, protocol)
+}
+
+// 4
+private fun parseHeaders(input: BufferedReader): HttpHeaders =
+        input.lineSequence()
+                .takeWhile { it.isNotBlank() }
+                .map {
+                    val (header, values) = headerRegex.find(it)?.destructured
+                            ?: throw RequestParseException("Invalid header line: $it")
+                    header to values.split(", ")
+                }
+                .groupBy { (name, _) -> name } // 5
+                .mapValues { (_, valuesWithNames) -> valuesWithNames.map { (_, values) -> values }.flatten() }
+                .let(::HttpHeaders)
+
+private fun parseBody(headers: HttpHeaders, input: BufferedReader): String? =
+        when {
+            headers.contentLength == 0 -> null
+            else -> {
+                val buffer = CharBuffer.allocate(headers.contentLength)
+                input.read(buffer)
+                buffer.flip()
+                buffer.toString()
+            }
+        }
+```
+
+Firstly, we parse a request line (3) validating method and protocol correctness.
+
+Next, we parse headers (4). We can switch `BufferedReader` to `Sequence` by using built-in  `lineSequence()` extension function. Then we read lines one by one until the empty line that indicates a separation between headers and body. Then we map it to pairs of a header and its values keeping in mind that there can be multiple of those. A request may contain multiple headers with the same key, so we have to group it (5) by key and then flatten values to one collection. Finally, we create `HttpHeaders` instance from this map (map was created during grouping operation).
+
+Parsing body is a tricky one. We cannot just read the rest of the stream, because reading is blocking until a connection is closed… which happens after sending response… which happens after reading request! We are in the loop! It turned out that we had to read as many bytes as sent in `Content-Length` header. That is not the end of the story. According to [RFC (4.4 Message Length)](https://tools.ietf.org/html/rfc2616#section-4.4) there are also other ways ( `chunked` transfer encoding, multipart files) of sending body, but we will keep it simple for now.
+
+You could start to worry. What if someone sends `Content-Length`, but _forget_ to send a body? Now we are waiting for a body as long as a connection is up. What about a gigantic body of `Integer.MAX_VALUE` size (~2GB, if you were wondering)? This is a problem, but we didn’t want to get into _things going wrong_, we will get back to it later when we will implement a connection pool with timeouts.
+
+Another thing is that we immediately read a body of a request. Maybe we don’t need to do that, because our `Handler` won’t use it?
+
+I’m sure there are a lot of more caveats, but let’s code that iteratively -  you know… The Agile Way!
+
+## Generate response
+Generating response is simpler because we already have structured data.
+
+```kotlin
+private const val HEADERS_BODY_SEPARATOR = "\n"
+
+fun Response.toRaw(): String {
+    val buffer = StringBuffer()
+    appendStatusLine(buffer)
+    appendRawHeaders(buffer)
+    body?.let { buffer.append(HEADERS_BODY_SEPARATOR).append(it) }
+    return buffer.toString()
+}
+
+private fun Response.appendRawHeaders(buffer: StringBuffer) {
+    headers.asSequence()
+            .joinTo(buffer) {
+                (name, values) -> "$name: ${values.joinToString(", ")}\n"
+            }
+}
+
+private fun Response.appendStatusLine(buffer: StringBuffer) = buffer.append("$PROTOCOL ${status.code} ${status.reason}\n")
+```
+
+Firstly, we generate a status line which contains a protocol, a status code, and a status reason. Then we append headers and after that, if body exists we append it after a new line which is a separator.
+
+We could probably make it more performant by writing directly to `BufferedWriter` but let’s leave it as it is for simplicity.
+
+## Putting it all together
+Now we have to use it in our server.
+```kotlin
+class Server(
+        val handler: Handler,
+        val port: Int,
+        val maxIncomingConnections: Int = 1
+): AutoCloseable {
+
+   ...
+
+    private fun handleConnection(socket: Socket) {
+        val input = socket.getInputStream().bufferedReader()
+        val output = PrintWriter(socket.getOutputStream())
+
+        val response = try {
+            val request = Request.fromRaw(input)
+            handler(request)
+        } catch (e: RequestParseException) {
+            Response(status = Status.BAD_REQUEST)
+        }
+        output.print(response.toRaw())
+        output.flush()
+    }
+
+    ...
+}
+```
+We now pass `Handler` (a function from `Request` to `Response`) that tells a server how it should respond for a request.  We parse the request, pass it to `Handler` and then generate a raw response from its return value that we write to a socket.
+
+We should actually return 505 (HTTP Version Not supported) and 405 (Method Not Allowed) and other statuses but let’s leave it for now and get back to nicer exception handling later when we code server filters.
+
+### Echo! Did you hear me?
+The simplest test for our new code is to send a request to a server with body and headers and receive it back.
+```kotlin
+@Test
+    fun `server should echo body and headers`() {
+        // given
+        val body = "Echo!"
+        val server = Server(port = 8090, maxIncomingConnections = 1, handler = { request ->
+            Response(
+                    status = Status.OK,
+                    body = request.body,
+                    headers = request.headers)
+        })
+
+        // when
+        val connection = URL("http://localhost:8090/").openConnection() as HttpURLConnection
+        connection.run {
+            connectTimeout = 50
+            requestMethod = "POST"
+            setRequestProperty("X-Custom-Header", "ABC")
+            setFixedLengthStreamingMode(body.length)
+            doOutput = true
+            connect()
+        }
+        val writer = connection.outputStream.bufferedWriter()
+        writer.write(body)
+        writer.flush()
+        val responseCode = connection.responseCode
+        val response = connection.inputStream.bufferedReader().readText()
+        connection.disconnect()
+
+        // then
+        assertThat(responseCode).isEqualTo(200)
+        assertThat(response).isEqualTo("Echo!")
+        assertThat(connection.getHeaderField("X-Custom-Header")).isEqualTo("ABC")
+
+        // cleanup
+        server.close()
+    }
+```
+
+We run it and the test passes, we sent post method with header and get it back with 200 OK response. Sweet!
+
+## One more thing - Facade over HttpURLConnection
+Let’s do one more thing. I don’t really like the API of HttpURLConnection. As you probably noticed in the last listing there is a lot of boilerplate code to send a request. We should build a simple [facade](https://en.wikipedia.org/wiki/Facade_pattern) over `HttpUrlConnection` using our data structures. We can create an interface.
+
+```
+interface Client {
+    fun exchange(url: String, request: Request): Response
+}
+```
+
+Then we can refactor our last when section to
+```kotlin
+// when
+val response = client.exchange(
+        url = "http://localhost:8090",
+        request = Request(
+                path = "/",
+                method = POST,
+                headers = HttpHeaders("X-Custom-Header" to "ABC"),
+                body = body))
+```
+
+This is a much nicer code in my opinion. Why don't we use something already made like Spring’s `RestTemplate` or `Retrofit`? Because we will write our own client eventually, so we will already have an interface that we can code to and we can switch to it with minimal effort.
+
+If you are interested in facade implementation you can check it out [here](https://github.com/jakubdyszkiewicz/naphi/blob/http-3-parsing-request-response/src/main/kotlin/org/naphi/Client.kt).
+
+## Summary & What’s next?
+We managed to successfully (although definitely not RFC compliant) parse a request and generate a response. We now can return something other than `Hello, World!` , we can now for example test slow sending response without changing our server code.
+
+Next up we will tackle multithreading!
+
+# Other articles of the series
+This article is a part of the HTTP series
+<ul>
+  {% for post in site.categories.['http'] %}
+    <li>
+        {% if post.title == page.title %}
+            {{ post.title }}
+        {% else %}
+            <a href="{{ post.url }}">{{ post.title }}</a>
+        {% endif %}
+    </li>
+  {% endfor %}
+</ul>
