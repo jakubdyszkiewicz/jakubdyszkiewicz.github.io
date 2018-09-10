@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>The HTTP part 4 - Multithreading</title>
-  <meta name="description" content="The problemSo far we managed to build a server that is single threaded. It means that processing requests are managed by one thread, so when a response is pr...">
+  <meta name="description" content="The problemSo far we managed to build a server that is single threaded. It means that processing requests are managed by one thread. When a response is prepa...">
   <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
   <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
   <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
   <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
 
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/09/03/http-part4.html">
+  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/09/09/http-part4.html">
   <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
 </head>
 
@@ -53,24 +53,24 @@
         <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
 
   <header class="post-header">
-    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/09/03/http-part4.html">The HTTP part 4 - Multithreading</a></h1>
-  <center>  <p class="post-meta"><time datetime="2018-09-03T12:20:31+02:00" itemprop="datePublished">Sep 3, 2018</time></p>
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/09/09/http-part4.html">The HTTP part 4 - Multithreading</a></h1>
+  <center>  <p class="post-meta"><time datetime="2018-09-09T12:20:31+02:00" itemprop="datePublished">Sep 9, 2018</time></p>
     
    </center>
   </header>
 
   <div class="post-content" itemprop="articleBody">
     <h2 id="the-problem">The problem</h2>
-<p>So far we managed to build a server that is single threaded. It means that processing requests are managed by one thread, so when a response is prepared and during this time another request comes, then it is queued. This leads to several problems.</p>
+<p>So far we managed to build a server that is single threaded. It means that processing requests are managed by one thread. When a response is prepared, all other incoming requests are queued. This leads to several problems.</p>
 
 <h4 id="only-one-core-is-utilised">Only one core is utilised</h4>
 <p>It’s not uncommon to run a server on a machine with 4, 8 or more cores. With a single-threaded model, only one of those core is utilised.</p>
 
 <h4 id="slow-response">Slow response</h4>
-<p>What if we’ve got an app that reads something from a database on a request, but the database is having problems. Now we are waiting for the database to return records while other users send more request to our app. They have to wait for a first request to be finished.</p>
+<p>What if we’ve got an app that reads something from a database on a request, but the database is having problems? Now we are waiting for the database to return records while other users send more request to our app. They have to wait for a first request to be finished.</p>
 
 <h4 id="slow-client">Slow client</h4>
-<p>What if everything is fine with our system, but a client that connects to our server is slow. Our server is waiting for the client to send the request and cannot simultaneously read requests from other clients. What’s more, we did not set any timeouts which means that one client that connects to our server that <em>forgot</em> to sent a request essentially kills our server.</p>
+<p>What if everything is fine with our system, but a client that connects to our server is slow? Our server is waiting for the client to send the request and cannot simultaneously read requests from other clients. What’s more, we did not set any timeouts which means that one client that connects to our server that <em>forgot</em> to sent a request essentially kills our server.</p>
 
 <h2 id="multithreading">Multithreading</h2>
 <p>We can partially solve some of the problems by making our server multithreaded. The good news is that it is really easy to do so.</p>
@@ -146,7 +146,7 @@
 <span class="p">}</span>
 </code></pre></div></div>
 
-<p>We added a thread pool (1) of max worker threads of 20. Now our server blocks on the <code class="highlighter-rouge">acceptingConnectionsThreadPool</code> to listen for a connection (2). When we’ve got the connection we immediately delegate reading a request, handling it and writing a response to another thread (3) from the <code class="highlighter-rouge">handlerThreadPool</code>. Now, when our server blocks on slow database or client, or whatever, it actually blocks a thread from handler thread pool, while we still can accept connections in accepting connections thread pool.</p>
+<p>We added a thread pool (1) of max worker threads of 20. Now our server blocks on the <code class="highlighter-rouge">acceptingConnectionsThreadPool</code> to listen for a connection (2). When we’ve got the connection we immediately delegate reading a request, handling it and writing a response to another thread (3) from the <code class="highlighter-rouge">handlerThreadPool</code>. Now, when our server blocks on a slow database, client or anything else, it actually blocks a thread from <code class="highlighter-rouge">handlerThreadPool</code>, while we still can accept connections in <code class="highlighter-rouge">acceptingConnectionsThreadPool</code>.</p>
 
 <h3 id="testing">Testing!</h3>
 <p>Let’s test if that works.</p>
@@ -160,7 +160,7 @@
     <span class="p">})</span>
 
     <span class="c1">// when</span>
-    <span class="kd">val</span> <span class="py">completedRequests</span> <span class="p">=</span> <span class="n">LongAdder</span><span class="p">()</span>
+    <span class="kd">val</span> <span class="py">completedRequests</span> <span class="p">=</span> <span class="n">CountDownLatch</span><span class="p">(</span><span class="m">3</span><span class="p">)</span>
     <span class="kd">val</span> <span class="py">clientPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newFixedThreadPool</span><span class="p">(</span><span class="m">3</span><span class="p">)</span>
     <span class="n">repeat</span><span class="p">(</span><span class="m">3</span><span class="p">)</span> <span class="p">{</span>
         <span class="n">clientPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
@@ -168,7 +168,7 @@
                 <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="n">HttpUrlConnectionClient</span><span class="p">(</span><span class="n">connectionTimeout</span> <span class="p">=</span> <span class="m">100</span><span class="p">,</span> <span class="n">socketTimeout</span> <span class="p">=</span> <span class="m">300</span><span class="p">)</span>
                         <span class="p">.</span><span class="n">exchange</span><span class="p">(</span><span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span> <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span><span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span> <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">GET</span><span class="p">))</span>
                 <span class="k">if</span> <span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">status</span> <span class="p">==</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">)</span> <span class="p">{</span>
-                    <span class="n">completedRequests</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span>
+                    <span class="n">completedRequests</span><span class="p">.</span><span class="n">countDown</span><span class="p">()</span>
                 <span class="p">}</span>
             <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
                 <span class="n">e</span><span class="p">.</span><span class="n">printStackTrace</span><span class="p">()</span>
@@ -178,8 +178,8 @@
 
     <span class="c1">// then</span>
     <span class="c1">// if server was single threaded then it would take at least 600ms (3 * sleep of 200ms)</span>
-    <span class="n">clientPool</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">500</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">)</span>
-    <span class="n">assertThat</span><span class="p">(</span><span class="n">completedRequests</span><span class="p">.</span><span class="n">sum</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">3</span><span class="p">)</span>
+    <span class="n">completedRequests</span><span class="p">.</span><span class="n">await</span><span class="p">(</span><span class="m">500</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">)</span>
+    <span class="n">clientPool</span><span class="p">.</span><span class="n">shutdownNow</span><span class="p">()</span>
 
     <span class="c1">// cleanup</span>
     <span class="n">server</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
@@ -189,7 +189,7 @@
 <p>We slow down providing a response by 200ms and make 3 requests at once. Then, we check if all those requests are completed by 500ms (which is less than 3 requests of 200ms one by one). We run it and it passes.</p>
 
 <h2 id="we-are-under-heavy-load">We are under heavy load!</h2>
-<p>Ok, so let’s say our database, microservice or any external resource is lagging and now it takes a lot of time to respond. We are trying to respond to 20 clients at once, we’ve got a pool of 20 threads, so what happens to the next client that makes a request? The <code class="highlighter-rouge">maxIncommingConnections</code> is almost irrelevant now because we immediately accepting new connections, so the queue there should be empty most of the time. The new handler task is being submitted to the thread pool and it is queued in its internal queue. Where is this queue?</p>
+<p>Ok, so let’s say our database, microservice or any external resource is lagging and now it takes a lot of time to respond. We are trying to respond to 20 clients at once, we’ve got a pool of 20 threads, so what happens to the next client that makes a request? The <code class="highlighter-rouge">maxIncomingConnections</code> is almost irrelevant now because we’re immediately accepting new connections, so the queue there should be empty most of the time. The new handler task is being submitted to the thread pool and it is queued in its internal queue. Where is this queue?</p>
 
 <div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cm">/**
      * Creates a thread pool that reuses a fixed number of threads
@@ -206,7 +206,7 @@
 <p>We can see that <code class="highlighter-rouge">Executors#newFixedThreadPool</code> factory method creates a thread pool with <em>unbounded</em> <code class="highlighter-rouge">LinkedBlockingQueue</code>.  Normally I would strongly suggest limiting the size of the queue because we can easily hit <code class="highlighter-rouge">OutOfMemoryError</code> filling queue with tasks, but in this case, we will hit another limit first.</p>
 
 <h3 id="file-descriptors">File descriptors</h3>
-<p>Imagine that database is now taking forever to return query, our requests handling tasks are piling up on a queue. Remember that before we submit a task to thread pool we accept a new connection. Eventually, what will happen is that we will hit a file descriptors limit! As you may remember from <a href="http://dyszkiewicz.me/programming/http/server/kotlin/2018/08/11/http-part2.html">Part 2</a>, every open connection creates new file descriptor. 
+<p>Imagine that database is now taking forever to return query, our requests handling tasks are piling up on a queue. Keep in mind that before we submit a task to <code class="highlighter-rouge">handlerThreadPool</code> we accept a new connection. Eventually, what will happen is that we will hit a file descriptors limit! As you may remember from <a href="http://dyszkiewicz.me/programming/http/server/kotlin/2018/08/11/http-part2.html">Part 2</a>, every open connection creates a new file descriptor. 
 To see that we setup Vagrant VM changing it open files limit to 500</p>
 <div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo bash -c "echo '* - nofile 500' &gt;&gt; /etc/security/limits.conf"
 </code></pre></div></div>
@@ -224,17 +224,20 @@ Exception in thread "main" java.net.SocketException: Too many open files (Accept
 	at org.naphi.ServerKt.main(Server.kt:119)
 </code></pre></div></div>
 
-<p>The default limit on Ubuntu Vagrant was 4096 on Java process.  You can easily bump it up, but keep in mind that every resource is finite. Every open socket cost us RAM, although as I mentioned in previous posts, you can bump this limit to even millions file descriptors with proper tuning and large enough machine.</p>
+<p>The default limit on Ubuntu Vagrant was 4096 on Java process.  You can easily bump it up, but keep in mind that every resource is finite. Every open socket cost us RAM, although as I mentioned in previous posts, you can bump this limit to even millions of file descriptors with proper tuning and large enough machine.</p>
 
 <h4 id="can-we-be-more-graceful">Can we be more graceful?</h4>
 <p>When we hit the file descriptor limit, our server either drops the connection or send <code class="highlighter-rouge">RST</code> packet. A client will most likely retry connection either by custom logic on <code class="highlighter-rouge">RST</code> or built-in TCP retries on dropped connection. Instead, we can return <a href="https://httpstatuses.com/503"><code class="highlighter-rouge">503 Service Unavailable</code> status code</a>. What is interesting is that you can attach a <code class="highlighter-rouge">Retry-After</code> header which will suggest when the client should try again. If the client respects that, then you can avoid unnecessary requests.</p>
 
 <h3 id="number-of-worker-threads">Number of worker threads</h3>
 <p>Let’s say that database is taking 5 seconds to return a query. We’ve got 20 worker threads and in every thread, we are blocking for those 5 seconds. Essentially we can now respond with a maximum of 20 requests per 5 seconds = 4 requests/s.
-Assuming we can spawn other connections to the database and we won’t kill it by doing so (not a real world scenario). Theoretically, if we increase our pool to 200 workers we should get 40 requests/s.</p>
+Additionally, let’s assume that we can spawn other connections to the database and we won’t kill it by doing so (not a real-world scenario). Theoretically, if we increase our pool to 200 workers we should get 40 requests/s.</p>
 
 <h4 id="how-far-can-we-go">How far can we go?</h4>
-<p>After changing <code class="highlighter-rouge">maxWorkerThreads</code> to 4000 I eventually got <code class="highlighter-rouge">OutOfMemoryException</code>.  Every new thread costs us RAM, so be careful with that.</p>
+<p>After changing <code class="highlighter-rouge">maxWorkerThreads</code> to 4000 I eventually got <code class="highlighter-rouge">OutOfMemoryException</code>. Every new thread costs us RAM, so be careful with that. Besides that, there is a limit on system processes in Linux. It’s 32 768 by default on my Vagrant machine.</p>
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>vagrant@vagrant-ubuntu-trusty-64:~$ cat /proc/sys/kernel/pid_max
+32768
+</code></pre></div></div>
 
 <p>But also more isn’t better. If the system is back to normal we end up with lots of redundant threads eating memory. The pool can scale down killing threads, but more working threads (actually working, not waiting for socket) means more context switching. Moreover, you have to be prepared to spin up thousands of threads, so you have to reserve machine with more RAM, even if for example only 20% of it is used for 90% of the time.</p>
 
