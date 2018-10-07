@@ -198,3 +198,5 @@ We managed to build a simple HTTP server! The next step would be to look at our 
 
 ## Code samples
 The code for this part is available [on my Github](https://github.com/jakubdyszkiewicz/naphi/tree/http-1-simple-http-server).
+
+{% include http-posts-list.html %}

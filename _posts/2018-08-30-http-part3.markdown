@@ -382,16 +382,4 @@ We managed to successfully (although definitely not RFC compliant) parse a reque
 
 Next up we will tackle multithreading!
 
-# Other articles of the series
-This article is a part of the HTTP series
-<ul>
-  {% for post in site.categories.['http'] %}
-    <li>
-        {% if post.title == page.title %}
-            {{ post.title }}
-        {% else %}
-            <a href="{{ post.url }}">{{ post.title }}</a>
-        {% endif %}
-    </li>
-  {% endfor %}
-</ul>
+{% include http-posts-list.html %}
