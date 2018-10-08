@@ -196,9 +196,9 @@ We create a new connection from accepted socket (3), add it to the connection po
 
 The main changes are in `handleConnection` method. Previously, we used `socket.use { }`  block in which we read a request and sent a response. At the end of this block, the connection was closed. We can’t do that now because we want to keep the connection opened. Instead, we should keep reading requests and sending responses while the connection is open.
 
-After a first request from a connection, our server will go through second iteration of the loop and will block on `Request.fromRaw(input)`, (6) which will block on `input.readLine()` of `BufferedReader`, which internally will block on a socket `read()`. This loop ends if either server or client will close the connection (7) or will send `Connection: close` header (8).
+After a first request from a connection, our server will go through second iteration of the loop and will block on `Request.fromRaw(input)`, (6) which will block on `input.readLine()` of `BufferedReader`, which internally will block on a socket `read()`. This loop ends if either server or client closes the connection (7) or will send `Connection: close` header (8).
 
-#### Detecting closed connections by client
+#### Detecting connections closed by client
 Detecting closed connections by our server is easy, we can check `socket.isClosed`. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends `FIN,ACK` segment and we send the `ACK` back.  At first, I thought that we can just check `socket.isClosed` too, but I was wrong - this flag only checks if *we* closed the socket.
 [It seems](https://stackoverflow.com/a/10241044/1189159) that there is no information about `FIN,ACK` event from the client in Socket API.
 The only indication of it is to try to either use `read()` or `readLine()` on `BufferedReader`.
@@ -208,7 +208,7 @@ That’s why for now we can keep things as they were. The beginning of our parsi
 ``` kotlin
 val requestLine = input.readLine() ?: throw EmptyRequestException()
 ```
-If `readLine()` will return null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
+If `readLine()` returns null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
 We will try to tackle this problem in the future maybe by using some sort of “one line/character caching BufferedReader”.
 
 ## Tests
@@ -238,7 +238,7 @@ To test that, we have to expose `connectionsEstablished()` method that returns t
 ### Importance of content-length header
 When we switched to the persistent connection model, it is really important to send a `content-length` header even if we don't send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more for a long time, because we immediately closed connection on the server side. Now have to explicitly say how long the body is because we don’t close the connection immediately.
 
-Server just checks `content-length` header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also chunked encoding (//TODO link), in which we send body length in the body itself, which we will implement in the future.
+Server just checks `content-length` header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also [chunked encoding](https://en.wikipedia.org/wiki/Chunked_transfer_encoding) in which we send body length in the body itself, which we will implement in the future.
 
 Back to the test! We create 3 sequential requests and the test eventually passes, but…
 

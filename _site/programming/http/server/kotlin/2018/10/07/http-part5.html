@@ -256,9 +256,9 @@ Instead of this, the browser opens a few connections to a server, to load multip
 
 <p>The main changes are in <code class="highlighter-rouge">handleConnection</code> method. Previously, we used <code class="highlighter-rouge">socket.use { }</code>  block in which we read a request and sent a response. At the end of this block, the connection was closed. We can’t do that now because we want to keep the connection opened. Instead, we should keep reading requests and sending responses while the connection is open.</p>
 
-<p>After a first request from a connection, our server will go through second iteration of the loop and will block on <code class="highlighter-rouge">Request.fromRaw(input)</code>, (6) which will block on <code class="highlighter-rouge">input.readLine()</code> of <code class="highlighter-rouge">BufferedReader</code>, which internally will block on a socket <code class="highlighter-rouge">read()</code>. This loop ends if either server or client will close the connection (7) or will send <code class="highlighter-rouge">Connection: close</code> header (8).</p>
+<p>After a first request from a connection, our server will go through second iteration of the loop and will block on <code class="highlighter-rouge">Request.fromRaw(input)</code>, (6) which will block on <code class="highlighter-rouge">input.readLine()</code> of <code class="highlighter-rouge">BufferedReader</code>, which internally will block on a socket <code class="highlighter-rouge">read()</code>. This loop ends if either server or client closes the connection (7) or will send <code class="highlighter-rouge">Connection: close</code> header (8).</p>
 
-<h4 id="detecting-closed-connections-by-client">Detecting closed connections by client</h4>
+<h4 id="detecting-connections-closed-by-client">Detecting connections closed by client</h4>
 <p>Detecting closed connections by our server is easy, we can check <code class="highlighter-rouge">socket.isClosed</code>. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends <code class="highlighter-rouge">FIN,ACK</code> segment and we send the <code class="highlighter-rouge">ACK</code> back.  At first, I thought that we can just check <code class="highlighter-rouge">socket.isClosed</code> too, but I was wrong - this flag only checks if <em>we</em> closed the socket.
 <a href="https://stackoverflow.com/a/10241044/1189159">It seems</a> that there is no information about <code class="highlighter-rouge">FIN,ACK</code> event from the client in Socket API.
 The only indication of it is to try to either use <code class="highlighter-rouge">read()</code> or <code class="highlighter-rouge">readLine()</code> on <code class="highlighter-rouge">BufferedReader</code>.</p>
@@ -267,7 +267,7 @@ The only indication of it is to try to either use <code class="highlighter-rouge
 That’s why for now we can keep things as they were. The beginning of our parsing logic protects us from empty requests anyways.</p>
 <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readLine</span><span class="p">()</span> <span class="o">?:</span> <span class="k">throw</span> <span class="n">EmptyRequestException</span><span class="p">()</span>
 </code></pre></div></div>
-<p>If <code class="highlighter-rouge">readLine()</code> will return null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
+<p>If <code class="highlighter-rouge">readLine()</code> returns null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
 We will try to tackle this problem in the future maybe by using some sort of “one line/character caching BufferedReader”.</p>
 
 <h2 id="tests">Tests</h2>
@@ -296,7 +296,7 @@ We will try to tackle this problem in the future maybe by using some sort of “
 <h3 id="importance-of-content-length-header">Importance of content-length header</h3>
 <p>When we switched to the persistent connection model, it is really important to send a <code class="highlighter-rouge">content-length</code> header even if we don’t send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more for a long time, because we immediately closed connection on the server side. Now have to explicitly say how long the body is because we don’t close the connection immediately.</p>
 
-<p>Server just checks <code class="highlighter-rouge">content-length</code> header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also chunked encoding (//TODO link), in which we send body length in the body itself, which we will implement in the future.</p>
+<p>Server just checks <code class="highlighter-rouge">content-length</code> header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also <a href="https://en.wikipedia.org/wiki/Chunked_transfer_encoding">chunked encoding</a> in which we send body length in the body itself, which we will implement in the future.</p>
 
 <p>Back to the test! We create 3 sequential requests and the test eventually passes, but…</p>
 

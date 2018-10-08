@@ -5,8 +5,8 @@
     <description>Tech blog</description>
     <link>http://localhost:4000/</link>
     <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Sun, 07 Oct 2018 20:28:54 +0200</pubDate>
-    <lastBuildDate>Sun, 07 Oct 2018 20:28:54 +0200</lastBuildDate>
+    <pubDate>Mon, 08 Oct 2018 15:52:24 +0200</pubDate>
+    <lastBuildDate>Mon, 08 Oct 2018 15:52:24 +0200</lastBuildDate>
     <generator>Jekyll v3.8.3</generator>
     
       <item>
@@ -207,9 +207,9 @@ Instead of this, the browser opens a few connections to a server, to load multip
 
 &lt;p&gt;The main changes are in &lt;code class=&quot;highlighter-rouge&quot;&gt;handleConnection&lt;/code&gt; method. Previously, we used &lt;code class=&quot;highlighter-rouge&quot;&gt;socket.use { }&lt;/code&gt;  block in which we read a request and sent a response. At the end of this block, the connection was closed. We can’t do that now because we want to keep the connection opened. Instead, we should keep reading requests and sending responses while the connection is open.&lt;/p&gt;
 
-&lt;p&gt;After a first request from a connection, our server will go through second iteration of the loop and will block on &lt;code class=&quot;highlighter-rouge&quot;&gt;Request.fromRaw(input)&lt;/code&gt;, (6) which will block on &lt;code class=&quot;highlighter-rouge&quot;&gt;input.readLine()&lt;/code&gt; of &lt;code class=&quot;highlighter-rouge&quot;&gt;BufferedReader&lt;/code&gt;, which internally will block on a socket &lt;code class=&quot;highlighter-rouge&quot;&gt;read()&lt;/code&gt;. This loop ends if either server or client will close the connection (7) or will send &lt;code class=&quot;highlighter-rouge&quot;&gt;Connection: close&lt;/code&gt; header (8).&lt;/p&gt;
+&lt;p&gt;After a first request from a connection, our server will go through second iteration of the loop and will block on &lt;code class=&quot;highlighter-rouge&quot;&gt;Request.fromRaw(input)&lt;/code&gt;, (6) which will block on &lt;code class=&quot;highlighter-rouge&quot;&gt;input.readLine()&lt;/code&gt; of &lt;code class=&quot;highlighter-rouge&quot;&gt;BufferedReader&lt;/code&gt;, which internally will block on a socket &lt;code class=&quot;highlighter-rouge&quot;&gt;read()&lt;/code&gt;. This loop ends if either server or client closes the connection (7) or will send &lt;code class=&quot;highlighter-rouge&quot;&gt;Connection: close&lt;/code&gt; header (8).&lt;/p&gt;
 
-&lt;h4 id=&quot;detecting-closed-connections-by-client&quot;&gt;Detecting closed connections by client&lt;/h4&gt;
+&lt;h4 id=&quot;detecting-connections-closed-by-client&quot;&gt;Detecting connections closed by client&lt;/h4&gt;
 &lt;p&gt;Detecting closed connections by our server is easy, we can check &lt;code class=&quot;highlighter-rouge&quot;&gt;socket.isClosed&lt;/code&gt;. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends &lt;code class=&quot;highlighter-rouge&quot;&gt;FIN,ACK&lt;/code&gt; segment and we send the &lt;code class=&quot;highlighter-rouge&quot;&gt;ACK&lt;/code&gt; back.  At first, I thought that we can just check &lt;code class=&quot;highlighter-rouge&quot;&gt;socket.isClosed&lt;/code&gt; too, but I was wrong - this flag only checks if &lt;em&gt;we&lt;/em&gt; closed the socket.
 &lt;a href=&quot;https://stackoverflow.com/a/10241044/1189159&quot;&gt;It seems&lt;/a&gt; that there is no information about &lt;code class=&quot;highlighter-rouge&quot;&gt;FIN,ACK&lt;/code&gt; event from the client in Socket API.
 The only indication of it is to try to either use &lt;code class=&quot;highlighter-rouge&quot;&gt;read()&lt;/code&gt; or &lt;code class=&quot;highlighter-rouge&quot;&gt;readLine()&lt;/code&gt; on &lt;code class=&quot;highlighter-rouge&quot;&gt;BufferedReader&lt;/code&gt;.&lt;/p&gt;
@@ -218,7 +218,7 @@ The only indication of it is to try to either use &lt;code class=&quot;highlight
 That’s why for now we can keep things as they were. The beginning of our parsing logic protects us from empty requests anyways.&lt;/p&gt;
 &lt;div class=&quot;language-kotlin highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kd&quot;&gt;val&lt;/span&gt; &lt;span class=&quot;py&quot;&gt;requestLine&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;input&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;readLine&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;?:&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;throw&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EmptyRequestException&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
-&lt;p&gt;If &lt;code class=&quot;highlighter-rouge&quot;&gt;readLine()&lt;/code&gt; will return null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
+&lt;p&gt;If &lt;code class=&quot;highlighter-rouge&quot;&gt;readLine()&lt;/code&gt; returns null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
 We will try to tackle this problem in the future maybe by using some sort of “one line/character caching BufferedReader”.&lt;/p&gt;
 
 &lt;h2 id=&quot;tests&quot;&gt;Tests&lt;/h2&gt;
@@ -247,7 +247,7 @@ We will try to tackle this problem in the future maybe by using some sort of “
 &lt;h3 id=&quot;importance-of-content-length-header&quot;&gt;Importance of content-length header&lt;/h3&gt;
 &lt;p&gt;When we switched to the persistent connection model, it is really important to send a &lt;code class=&quot;highlighter-rouge&quot;&gt;content-length&lt;/code&gt; header even if we don’t send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more for a long time, because we immediately closed connection on the server side. Now have to explicitly say how long the body is because we don’t close the connection immediately.&lt;/p&gt;
 
-&lt;p&gt;Server just checks &lt;code class=&quot;highlighter-rouge&quot;&gt;content-length&lt;/code&gt; header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also chunked encoding (//TODO link), in which we send body length in the body itself, which we will implement in the future.&lt;/p&gt;
+&lt;p&gt;Server just checks &lt;code class=&quot;highlighter-rouge&quot;&gt;content-length&lt;/code&gt; header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also &lt;a href=&quot;https://en.wikipedia.org/wiki/Chunked_transfer_encoding&quot;&gt;chunked encoding&lt;/a&gt; in which we send body length in the body itself, which we will implement in the future.&lt;/p&gt;
 
 &lt;p&gt;Back to the test! We create 3 sequential requests and the test eventually passes, but…&lt;/p&gt;
 
