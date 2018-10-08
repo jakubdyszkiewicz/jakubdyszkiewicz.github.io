@@ -30,8 +30,8 @@ You send a request to a server with a header `Connection: keep-alive`, the serve
 
 It was such an important optimisation that all connections [are persistent by default](https://tools.ietf.org/html/rfc2068#section-8.1.2) unless specified otherwise. You don’t have to send a `Connection: keep-alive` header, but if you want the connection to be closed you should send a `Connection: close`.
 
-### How long to keep a connection open?
-We have to close a connection at some point. How long should we wait since the last request arrived? If we wait too long, we may end up with a bunch of useless connections. If we wait too short, clients may end up not sending multiple requests on one connection.
+### How long should we keep a connection open?
+At some point we have to close a connection. How long should we wait since the last request arrived? If we wait too long, we may end up with a bunch of useless connections. If we wait too short, clients may end up not sending multiple requests on one connection.
 
 Let's see what are the defaults in popular servers.
 
@@ -199,17 +199,17 @@ The main changes are in `handleConnection` method. Previously, we used `socket.u
 After a first request from a connection, our server will go through second iteration of the loop and will block on `Request.fromRaw(input)`, (6) which will block on `input.readLine()` of `BufferedReader`, which internally will block on a socket `read()`. This loop ends if either server or client closes the connection (7) or will send `Connection: close` header (8).
 
 #### Detecting connections closed by client
-Detecting closed connections by our server is easy, we can check `socket.isClosed`. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends `FIN,ACK` segment and we send the `ACK` back.  At first, I thought that we can just check `socket.isClosed` too, but I was wrong - this flag only checks if *we* closed the socket.
+Detecting closed connections by our server is easy, we can check `socket.isClosed`. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends `FIN,ACK` segment and we send the `ACK` back.  At first I thought that we can just check `socket.isClosed` too, but I was wrong - this flag only checks if *we* closed the socket.
 [It seems](https://stackoverflow.com/a/10241044/1189159) that there is no information about `FIN,ACK` event from the client in Socket API.
 The only indication of it is to try to either use `read()` or `readLine()` on `BufferedReader`.
 
 With that in mind, it is hard to do the following logic - block until new data arrives, then parse the request, if there is no data, close a connection. We cannot use `readLine()` before `Request.fromRaw(input)` because it will consume one line of our `BufferedReader`. We could change signature `fromRaw` to accept the first line as `String` and the rest of a stream as `BufferedReader` but that’s just ugly.
-That’s why for now we can keep things as they were. The beginning of our parsing logic protects us from empty requests anyways.
+That’s why for now we can keep things as they are. The beginning of our parsing logic protects us from empty requests anyway.
 ``` kotlin
 val requestLine = input.readLine() ?: throw EmptyRequestException()
 ```
-If `readLine()` returns null, we can just catch it (7) and close the connection. It might not be the best, it may smell like using exceptions for control flow, but it works. 
-We will try to tackle this problem in the future maybe by using some sort of “one line/character caching BufferedReader”.
+If `readLine()` returns null, we can just catch it (7) and close the connection. It might not be the best and it may smell like using exceptions for control flow but it works. 
+We will try to tackle this problem in the future by using some sort of “one line/character caching BufferedReader”.
 
 ## Tests
 The main happy path to test is to check whether we can make several requests on one connection.
@@ -233,12 +233,12 @@ fun `should reuse connection to make requests`() {
     assertThat(server.connectionsEstablished()).isEqualTo(1)
 }
 ```
-To test that, we have to expose `connectionsEstablished()` method that returns the count of connections established to the server. This most likely will be transformed in some kind of `ServerStats` object, because we will want to have metrics, but let’s keep it simple for now.
+To test that we have to expose `connectionsEstablished()` method that returns the count of connections established to the server. This most likely will be transformed in some kind of `ServerStats` object, because we will want to have metrics, but let’s keep it simple for now.
 
 ### Importance of content-length header
-When we switched to the persistent connection model, it is really important to send a `content-length` header even if we don't send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more for a long time, because we immediately closed connection on the server side. Now have to explicitly say how long the body is because we don’t close the connection immediately.
+When we switched to the persistent connection model, it is really important to send a `content-length` header even if we don't send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more content for a long time, because we immediately closed connection on the server side. Now we have to explicitly say how long the body is because we don’t close the connection immediately.
 
-Server just checks `content-length` header. It skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also [chunked encoding](https://en.wikipedia.org/wiki/Chunked_transfer_encoding) in which we send body length in the body itself, which we will implement in the future.
+Server just checks `content-length` header and skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also [chunked encoding](https://en.wikipedia.org/wiki/Chunked_transfer_encoding) in which we send body length in the body itself. We will implement it in the future.
 
 Back to the test! We create 3 sequential requests and the test eventually passes, but…
 
