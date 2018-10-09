@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>The HTTP part 5 - Persistent connections</title>
+  <meta name="description" content="Persistent connectionsOur current flow to receive a response from server looks like this: open a connection, read a request, prepare the response, write the ...">
+  <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
+  <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/10/09/http-part5.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    
+<div class="wrapper">
+  <center> <a href="/index.html"><div class="site-title">   Dyszkiewicz; </div></a></center>
+</div>
+<div class="wrapper site-description">
+<center>  Tech blog </center>
+</div>
+<div class="wrapper">
+  <div class="trigger site-navigation">
+    <a class="page-link" href="/index.html">HOME</a>
+
+    
+    
+
+    <span class="exclamationMark">/</span><a class="page-link" href="/about/">About</a>
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>
+</div>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/10/09/http-part5.html">The HTTP part 5 - Persistent connections</a></h1>
+  <center>  <p class="post-meta"><time datetime="2018-10-09T09:40:31+02:00" itemprop="datePublished">Oct 9, 2018</time></p>
+    
+   </center>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="persistent-connections">Persistent connections</h2>
+<p>Our current flow to receive a response from server looks like this: open a connection, read a request, prepare the response, write the response, close the connection. This is suboptimal! If a client wants to send 50 requests, it has to open and close connection for each request. Establishing a connection is a costly operation, the obvious optimisation is to reuse a connection between multiple requests.</p>
+
+<p><img src="http://localhost:4000/assets/http5/persistent_connection.png" alt="persistent connection" />
+<em>source: <a href="https://en.wikipedia.org/wiki/HTTP_persistent_connection">Wikipedia</a></em></p>
+
+<p>The left schema shows the current flow, the right one is what we want to achieve.</p>
+
+<p>Let’s go to <a href="http://reddit.com">reddit.com</a> and see how many requests are sent.</p>
+
+<p><a href="http://localhost:4000/assets/http5/reddit_connections.png"><img src="http://localhost:4000/assets/http5/reddit_connections.png" alt="reddit connections" /></a></p>
+
+<p>The browser sent 142 requests. What’s more, when you enter a website you probably start going to subpages, clicking here and there. For one website visit you can send hundreds or thousands of requests. Imagine opening and closing connection for each one of them.</p>
+
+<h3 id="multiple-persistent-connections">Multiple persistent connections</h3>
+<p>A browser could open one connection and download every file one by one, but this way it wouldn’t utilise all the resources available.
+Instead of this, the browser opens a few connections to a server, to load multiple files at once. HTTP/2.0 solves this problem, by enabling the client to send multiple concurrent requests over one connection.</p>
+
+<h3 id="connection-keep-alive">Connection: keep-alive</h3>
+<p>There is no information in <a href="https://tools.ietf.org/html/rfc1945">RFC1945</a> (HTTP/1.0) about persistent connections nor <code class="highlighter-rouge">Connection</code> header. It was added to the protocol later on in <a href="https://tools.ietf.org/html/rfc2068#section-19.7.1.1">RFC2068</a> (HTTP/1.1).</p>
+
+<p>You send a request to a server with a header <code class="highlighter-rouge">Connection: keep-alive</code>, the server will keep that connection open for some time and send the same header in the response. Now the client will also keep the connection open for some time so they can exchange data on a single connection.</p>
+
+<p>It was such an important optimisation that all connections <a href="https://tools.ietf.org/html/rfc2068#section-8.1.2">are persistent by default</a> unless specified otherwise. You don’t have to send a <code class="highlighter-rouge">Connection: keep-alive</code> header, but if you want the connection to be closed you should send a <code class="highlighter-rouge">Connection: close</code>.</p>
+
+<h3 id="how-long-should-we-keep-a-connection-open">How long should we keep a connection open?</h3>
+<p>At some point we have to close a connection. How long should we wait since the last request arrived? If we wait too long, we may end up with a bunch of useless connections. If we wait too short, clients may end up not sending multiple requests on one connection.</p>
+
+<p>Let’s see what are the defaults in popular servers.</p>
+
+<h4 id="spring-boot-default">Spring Boot default</h4>
+<blockquote>
+  <p>server.connection-timeout=# Time that connectors wait for another HTTP request before closing the connection. When not set, the connector’s container-specific default is used. Use a value of -1 to indicate no (that is, an infinite) timeout.</p>
+</blockquote>
+
+<p>Spring Boot uses embedded tomcat by default, so we should go look there.</p>
+
+<h4 id="tomcat-default">Tomcat default</h4>
+<blockquote>
+  <p>keepAliveTimeout</p>
+
+  <p>The number of milliseconds this Connector will wait for another HTTP request before closing the connection. The default value is to use the value that has been set for the connectionTimeout attribute. Use a value of -1 to indicate no (i.e. infinite) timeout.</p>
+
+  <p>connectionTimeout</p>
+
+  <p>The number of milliseconds this Connector will wait, after accepting a connection, for the request URI line to be presented. Use a value of -1 to indicate no (i.e. infinite) timeout. The default value is 60000 (i.e. 60 seconds) but note that the standard server.xml that ships with Tomcat sets this to 20000 (i.e. 20 seconds). Unless disableUploadTimeout is set to false, this timeout will also be used when reading the request body (if any).</p>
+</blockquote>
+
+<p>It seems that it’s 60 seconds.</p>
+
+<h4 id="undertow-default">Undertow default</h4>
+<blockquote>
+  <p>IDLE_TIMEOUT</p>
+
+  <p>The amount of time a connection can be idle for before it is timed out. An idle connection is a connection that has had no data transfer in the idle timeout period. Note that this is a fairly coarse grained approach, and small values will cause problems for requests with a long processing time.</p>
+</blockquote>
+
+<p>There is no information in documentation about default nor I can find one in the code. <a href="https://issues.jboss.org/browse/UNDERTOW-630">This ticket</a> suggests that it’s 10 minutes.</p>
+
+<h4 id="apache">Apache</h4>
+<blockquote>
+  <p>Description:	Amount of time the server will wait for subsequent requests on a persistent connection</p>
+
+  <p>Syntax:	KeepAliveTimeout num[ms]</p>
+
+  <p>Default:	KeepAliveTimeout 5</p>
+</blockquote>
+
+<p><a href="https://httpd.apache.org/docs/2.4/mod/core.html#keepalivetimeout">Only 5 seconds in Apache</a>.</p>
+
+<h4 id="the-right-value">The right value</h4>
+<p>There isn’t one. As always, pick a value you feel is right, measure it, tune it if needed.</p>
+
+<h2 id="implementation">Implementation</h2>
+<p>Firstly, we need our connections to be managed by the server in one place. We need <code class="highlighter-rouge">Connection</code> class that will abstract away socket and will trace last time request was sent.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">Connection</span><span class="p">(</span><span class="k">private</span> <span class="kd">val</span> <span class="py">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">var</span> <span class="py">lastActivityTime</span><span class="p">:</span> <span class="n">Long</span> <span class="p">=</span> <span class="n">System</span><span class="p">.</span><span class="n">currentTimeMillis</span><span class="p">()</span>
+        <span class="k">private</span> <span class="k">set</span>
+
+    <span class="k">fun</span> <span class="n">markAsAlive</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">lastActivityTime</span> <span class="p">=</span> <span class="n">System</span><span class="p">.</span><span class="n">currentTimeMillis</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="o">..</span><span class="p">.</span>
+
+    <span class="k">fun</span> <span class="n">getInputStream</span><span class="p">():</span> <span class="n">InputStream</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">()</span>
+            <span class="o">?:</span> <span class="k">throw</span> <span class="n">ConnectionException</span><span class="p">(</span><span class="s">"Could not obtain stream. Is socket closed?"</span><span class="p">)</span>
+
+    <span class="k">fun</span> <span class="n">getOutputStream</span><span class="p">():</span> <span class="n">OutputStream</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">()</span>
+            <span class="o">?:</span> <span class="k">throw</span> <span class="n">ConnectionException</span><span class="p">(</span><span class="s">"Could not obtain stream. Is socket closed?"</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>We will relay on server class to call <code class="highlighter-rouge">markAsAlive()</code> on every request. It’s not ideal. We could create decorator over <code class="highlighter-rouge">InputStream</code> and mark the connection as alive for every byte, but I feel that this would create performance overhead. I’d also rather measure the time between requests, not between bytes. This can protect us a bit from sending requests one by one, one line by one really slow.</p>
+
+<p>Now we can create a connection pool</p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">ConnectionPool</span><span class="p">(</span>
+        <span class="kd">val</span> <span class="py">keepAliveTimeout</span><span class="p">:</span> <span class="n">Duration</span><span class="p">,</span>
+        <span class="kd">val</span> <span class="py">checkKeepAliveInterval</span><span class="p">:</span> <span class="n">Duration</span>
+<span class="p">):</span> <span class="n">Closeable</span> <span class="p">{</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">ConnectionPool</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">connections</span> <span class="p">=</span> <span class="n">ConcurrentLinkedQueue</span><span class="p">&lt;</span><span class="n">Connection</span><span class="p">&gt;()</span> <span class="c1">// 1</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">checkerThreadPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newSingleThreadScheduledExecutor</span><span class="p">(</span>
+            <span class="n">IncrementingThreadFactory</span><span class="p">(</span><span class="s">"connection-pool-checker"</span><span class="p">))</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">connectionsEstablished</span> <span class="p">=</span> <span class="n">LongAdder</span><span class="p">()</span>
+
+    <span class="n">init</span> <span class="p">{</span>
+        <span class="n">scheduleClosingStaleConnections</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">scheduleClosingStaleConnections</span><span class="p">()</span> <span class="p">{</span> <span class="c1">// 2</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">scheduleAtFixedRate</span><span class="p">({</span>
+            <span class="k">try</span> <span class="p">{</span>
+                <span class="n">closeStaleConnections</span><span class="p">()</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="s">"Error while closing stale connections"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">},</span> <span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">(),</span> <span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">(),</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">closeStaleConnections</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">connections</span><span class="p">.</span><span class="n">filter</span><span class="p">(</span><span class="k">this</span><span class="o">::</span><span class="n">isConnectionInactive</span><span class="p">)</span>
+                <span class="p">.</span><span class="n">forEach</span> <span class="p">{</span>
+                    <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Closing connection to ${it.destination()} due to not being active"</span><span class="p">)</span>
+                    <span class="n">it</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+                <span class="p">}</span>
+        <span class="n">connections</span><span class="p">.</span><span class="n">removeIf</span><span class="p">(</span><span class="n">Connection</span><span class="o">::</span><span class="n">isClosed</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="n">isConnectionInactive</span><span class="p">(</span><span class="n">connection</span><span class="p">:</span> <span class="n">Connection</span><span class="p">):</span> <span class="n">Boolean</span> <span class="p">=</span>
+        <span class="n">Duration</span><span class="p">.</span><span class="n">ofMillis</span><span class="p">(</span><span class="n">System</span><span class="p">.</span><span class="n">currentTimeMillis</span><span class="p">()</span> <span class="p">-</span> <span class="n">connection</span><span class="p">.</span><span class="n">lastActivityTime</span><span class="p">)</span> <span class="p">&gt;</span> <span class="n">keepAliveTimeout</span>
+
+    <span class="k">fun</span> <span class="n">addConnection</span><span class="p">(</span><span class="n">connection</span><span class="p">:</span> <span class="n">Connection</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">connectionsEstablished</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span>
+        <span class="n">connections</span> <span class="p">+=</span> <span class="n">connection</span>
+    <span class="p">}</span>
+
+    <span class="k">override</span> <span class="k">fun</span> <span class="n">close</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">shutdown</span><span class="p">()</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">1</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">SECONDS</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="n">connectionsEstablished</span><span class="p">()</span> <span class="p">=</span> <span class="n">connectionsEstablished</span><span class="p">.</span><span class="n">sum</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>We keep our connections in a concurrent queue (1). We schedule task in the background that will check whether a connection is inactive and close it if needed (2). <code class="highlighter-rouge">keepAliveTimeout</code> is the time after which server will treat the connection as stale, counting after the last request. <code class="highlighter-rouge">checkKeepAliveInterval</code> is how often the check task is executed.</p>
+
+<p>We can now use it in our <code class="highlighter-rouge">Server</code> by changing <code class="highlighter-rouge">acceptConnection()</code> and <code class="highlighter-rouge">handleConnection()</code> methods</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="k">fun</span> <span class="n">acceptConnection</span><span class="p">()</span> <span class="p">{</span>
+    <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">Connection</span><span class="p">(</span><span class="n">serverSocket</span><span class="p">.</span><span class="n">accept</span><span class="p">())</span> <span class="c1">// 3</span>
+    <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Accepted new connection ${connection.destination()}"</span><span class="p">)</span>
+    <span class="n">handlerThreadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
+        <span class="n">connectionPool</span><span class="p">.</span><span class="n">addConnection</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span> <span class="c1">// 4</span>
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="n">handleConnection</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span> <span class="c1">// 5</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">when</span> <span class="p">{</span>
+                <span class="n">e</span> <span class="k">is</span> <span class="n">SocketException</span> <span class="p">&amp;&amp;</span> <span class="n">connection</span><span class="p">.</span><span class="n">isClosed</span><span class="p">()</span> <span class="p">-&gt;</span> <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"Connection was closed"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">else</span> <span class="p">-&gt;</span> <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Could not handle connection"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">connection</span><span class="p">:</span> <span class="n">Connection</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">connection</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
+    <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
+    <span class="k">while</span> <span class="p">(!</span><span class="n">connection</span><span class="p">.</span><span class="n">isClosed</span><span class="p">())</span> <span class="p">{</span>
+        <span class="kd">var</span> <span class="py">request</span><span class="p">:</span> <span class="n">Request</span><span class="p">?</span> <span class="p">=</span> <span class="k">null</span>
+        <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="k">try</span> <span class="p">{</span>
+            <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">.</span><span class="n">fromRaw</span><span class="p">(</span><span class="n">input</span><span class="p">)</span> <span class="c1">// 6</span>
+            <span class="n">connection</span><span class="p">.</span><span class="n">markAsAlive</span><span class="p">()</span>
+            <span class="n">handler</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">EmptyRequestException</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// 7, Find a better way to detect close connections</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"Connection was closed by client"</span><span class="p">)</span>
+            <span class="n">connection</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">break</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">RequestParseException</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Could not parse a request"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">BAD_REQUEST</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">toRaw</span><span class="p">())</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">request</span><span class="o">?.</span><span class="n">headers</span><span class="o">?.</span><span class="n">connection</span> <span class="p">==</span> <span class="s">"close"</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// 8</span>
+            <span class="n">connection</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>We create a new connection from accepted socket (3), add it to the connection pool (4) and then handle the connection (5). Last two steps are run in <code class="highlighter-rouge">handlerThreadPool</code> so our server can immediately accept other connections.</p>
+
+<p>The main changes are in <code class="highlighter-rouge">handleConnection</code> method. Previously, we used <code class="highlighter-rouge">socket.use { }</code>  block in which we read a request and sent a response. At the end of this block, the connection was closed. We can’t do that now because we want to keep the connection opened. Instead, we should keep reading requests and sending responses while the connection is open.</p>
+
+<p>After a first request from a connection, our server will go through second iteration of the loop and will block on <code class="highlighter-rouge">Request.fromRaw(input)</code>, (6) which will block on <code class="highlighter-rouge">input.readLine()</code> of <code class="highlighter-rouge">BufferedReader</code>, which internally will block on a socket <code class="highlighter-rouge">read()</code>. This loop ends if either server or client closes the connection (7) or will send <code class="highlighter-rouge">Connection: close</code> header (8).</p>
+
+<h4 id="detecting-connections-closed-by-client">Detecting connections closed by client</h4>
+<p>Detecting closed connections by our server is easy, we can check <code class="highlighter-rouge">socket.isClosed</code>. The tricky part for me was to check if a connection was closed by the client. When the client closes a connection, it sends <code class="highlighter-rouge">FIN,ACK</code> segment and we send the <code class="highlighter-rouge">ACK</code> back.  At first I thought that we can just check <code class="highlighter-rouge">socket.isClosed</code> too, but I was wrong - this flag only checks if <em>we</em> closed the socket.
+<a href="https://stackoverflow.com/a/10241044/1189159">It seems</a> that there is no information about <code class="highlighter-rouge">FIN,ACK</code> event from the client in Socket API.
+The only indication of it is to try to either use <code class="highlighter-rouge">read()</code> or <code class="highlighter-rouge">readLine()</code> on <code class="highlighter-rouge">BufferedReader</code>.</p>
+
+<p>With that in mind, it is hard to do the following logic - block until new data arrives, then parse the request, if there is no data, close a connection. We cannot use <code class="highlighter-rouge">readLine()</code> before <code class="highlighter-rouge">Request.fromRaw(input)</code> because it will consume one line of our <code class="highlighter-rouge">BufferedReader</code>. We could change signature <code class="highlighter-rouge">fromRaw</code> to accept the first line as <code class="highlighter-rouge">String</code> and the rest of a stream as <code class="highlighter-rouge">BufferedReader</code> but that’s just ugly.
+That’s why for now we can keep things as they are. The beginning of our parsing logic protects us from empty requests anyway.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readLine</span><span class="p">()</span> <span class="o">?:</span> <span class="k">throw</span> <span class="n">EmptyRequestException</span><span class="p">()</span>
+</code></pre></div></div>
+<p>If <code class="highlighter-rouge">readLine()</code> returns null, we can just catch it (7) and close the connection. It might not be the best and it may smell like using exceptions for control flow but it works. 
+We will try to tackle this problem in the future by using some sort of “one line/character caching BufferedReader”.</p>
+
+<h2 id="tests">Tests</h2>
+<p>The main happy path to test is to check whether we can make several requests on one connection.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="kd">val</span> <span class="py">client</span> <span class="p">=</span> <span class="n">HttpUrlConnectionClient</span><span class="p">(</span><span class="n">connectionTimeout</span> <span class="p">=</span> <span class="m">50</span><span class="p">,</span> <span class="n">socketTimeout</span> <span class="p">=</span> <span class="m">100</span><span class="p">)</span>
+
+<span class="n">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="n">should</span> <span class="n">reuse</span> <span class="n">connection</span> <span class="n">to</span> <span class="n">make</span> <span class="n">requests</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="n">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
+        <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">,</span> <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">))</span>
+    <span class="p">})</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">start</span><span class="p">(</span><span class="m">8090</span><span class="p">)</span>
+
+    <span class="c1">// when</span>
+    <span class="n">repeat</span><span class="p">(</span><span class="n">times</span> <span class="p">=</span> <span class="m">3</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span><span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span> <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span><span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span> <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">GET</span><span class="p">))</span>
+    <span class="p">}</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>To test that we have to expose <code class="highlighter-rouge">connectionsEstablished()</code> method that returns the count of connections established to the server. This most likely will be transformed in some kind of <code class="highlighter-rouge">ServerStats</code> object, because we will want to have metrics, but let’s keep it simple for now.</p>
+
+<h3 id="importance-of-content-length-header">Importance of content-length header</h3>
+<p>When we switched to the persistent connection model, it is really important to send a <code class="highlighter-rouge">content-length</code> header even if we don’t send body! Previously we would send a response and close the connection. Even if a client read body and didn’t know that it ended, it didn’t block waiting for more content for a long time, because we immediately closed connection on the server side. Now we have to explicitly say how long the body is because we don’t close the connection immediately.</p>
+
+<p>Server just checks <code class="highlighter-rouge">content-length</code> header and skips reading body if there isn’t any. However, this is not a full HTTP implementation. There is also <a href="https://en.wikipedia.org/wiki/Chunked_transfer_encoding">chunked encoding</a> in which we send body length in the body itself. We will implement it in the future.</p>
+
+<p>Back to the test! We create 3 sequential requests and the test eventually passes, but…</p>
+
+<h3 id="persistent-connections-of-httpurlconnection">Persistent connections of HttpURLConnection</h3>
+<p>I had so many problems with persistent connections of the <code class="highlighter-rouge">HttpURLConnection</code>! It is said <a href="https://docs.oracle.com/javase/7/docs/technotes/guides/net/http-keepalive.html">in docs</a> that it supports persistent connections out of the box, but it works in such non-obvious way! For example, <code class="highlighter-rouge">connection.disconnect()</code> does not close the connection. I couldn’t find a way to close persistent connections between tests which messed up my tests. Eventually, I got tired of fighting with <code class="highlighter-rouge">HttpURLConnection</code> and made a fallback to well know, excellent <a href="https://hc.apache.org/httpcomponents-client-ga/">Apache HTTP Client</a>.
+I created an implementation for my <code class="highlighter-rouge">Client</code> interface. I won’t bother to get into details, you can check it out <a href="https://github.com/jakubdyszkiewicz/naphi/blob/http-5-connection-pool/src/main/kotlin/org/naphi/Client.kt#L71">here</a>.</p>
+
+<p>I also tested whether old connections are closed by connection pool checker</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="n">should</span> <span class="n">create</span> <span class="n">new</span> <span class="n">connection</span> <span class="k">when</span> <span class="n">old</span> <span class="k">is</span> <span class="n">closed</span> <span class="k">by</span> <span class="n">keep</span> <span class="n">alive</span> <span class="n">checker</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="n">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span>
+            <span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span>
+            <span class="n">keepAliveTimeout</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofMillis</span><span class="p">(</span><span class="m">500</span><span class="p">),</span>
+            <span class="n">checkKeepAliveInterval</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofMillis</span><span class="p">(</span><span class="m">100</span><span class="p">),</span>
+            <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
+                <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">,</span> <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">))</span>
+            <span class="p">})</span>
+    <span class="n">server</span><span class="p">.</span><span class="n">start</span><span class="p">(</span><span class="m">8090</span><span class="p">)</span>
+
+    <span class="c1">// when</span>
+    <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span><span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span> <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span><span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span> <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">GET</span><span class="p">))</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+
+    <span class="c1">// when</span>
+    <span class="n">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">keepAliveTimeout</span><span class="p">.</span><span class="n">toMillis</span><span class="p">()</span> <span class="p">+</span> <span class="n">server</span><span class="p">.</span><span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">())</span>
+    <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span><span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span> <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span><span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span> <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">GET</span><span class="p">))</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">2</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>And if a connection is dropped when <code class="highlighter-rouge">Connection: close</code> header is sent</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="n">should</span> <span class="n">not</span> <span class="n">reuse</span> <span class="n">connections</span> <span class="k">when</span> <span class="n">Connection</span> <span class="n">close</span> <span class="k">is</span> <span class="n">send</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="n">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
+        <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">,</span> <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">))</span>
+    <span class="p">})</span>
+
+    <span class="c1">// when</span>
+    <span class="n">repeat</span><span class="p">(</span><span class="n">times</span> <span class="p">=</span> <span class="m">3</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span>
+                <span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span>
+                <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span>
+                        <span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span>
+                        <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">GET</span><span class="p">,</span>
+                        <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"connection"</span> <span class="n">to</span> <span class="s">"close"</span><span class="p">)))</span>
+    <span class="p">}</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">3</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h2 id="summary">Summary</h2>
+<p>We managed to add persistent connections to our server! We keep a connection open so sending sequentially multiple requests is more optimal. Next up, we will build our HTTP client that will use connection pool as well.</p>
+
+<p>Code is available <a href="https://github.com/jakubdyszkiewicz/naphi/tree/http-5-connection-pool">here</a>.</p>
+
+<h1 id="other-articles-of-the-series">Other articles of the series</h1>
+<p>This article is a part of the HTTP series</p>
+<ul>
+  
+    <li>
+        
+            The HTTP part 5 - Persistent connections
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/09/09/http-part4.html">The HTTP part 4 - Multithreading</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/09/03/http-part3.html">The HTTP part 3 - Parsing request &amp; response</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/08/11/http-part2.html">The HTTP part 2 - Connections Queue</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/07/31/http-part1.html">The HTTP part 1 - Let's start small</a>
+        
+    </li>
+  
+</ul>
+
+  </div>
+
+  
+  <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//dyszkiewicz.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+  
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading small-site-title">Dyszkiewicz;</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list footer-content">
+          <li>Based on <a href="http://github.com/hemangsk/Gravity">Gravity</a></li>
+          <li>Made with <i class="fa fa-heart"></i> on <a href="jekyll.com"><span style="color:black">Jekyll</a></span></li>
+
+
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2 footer-content">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jakubdyszkiewicz"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jakubdyszkiewicz</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jdyszkiewicz"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jdyszkiewicz</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3 site-description">
+        <!-- <p>Tech blog</p> -->
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

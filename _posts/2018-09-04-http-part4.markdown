@@ -225,16 +225,4 @@ private val acceptingConnectionsThreadPool = Executors.newSingleThreadExecutor(
 ## Summary
 We managed to change our server to the multithread version. We can now utilise all cores! A slow client finally won’t make others wait for a response (although multiple slow clients will). Next up - we will create a connection pool.
 
-# Other articles of the series
-This article is a part of the HTTP series
-<ul>
-  {% for post in site.categories.['http'] %}
-    <li>
-        {% if post.title == page.title %}
-            {{ post.title }}
-        {% else %}
-            <a href="{{ post.url }}">{{ post.title }}</a>
-        {% endif %}
-    </li>
-  {% endfor %}
-</ul>
+{% include http-posts-list.html %}

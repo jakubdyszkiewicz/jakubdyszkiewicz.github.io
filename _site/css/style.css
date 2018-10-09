@@ -724,3 +724,6 @@ pre {
   color: #cb4b16; }
 
 /* Literal.Number.Integer.Long */
+img + em {
+  display: block;
+  text-align: center; }
