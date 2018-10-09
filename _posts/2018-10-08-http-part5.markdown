@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "The HTTP part 5 - Persistent connections"
-date:   2018-10-07 15:10:31 +0530
+date:   2018-10-09 13:10:31 +0530
 categories: ["programming", "http", "server", "kotlin"]
 comments: true
 ---
@@ -300,6 +300,8 @@ fun `should not reuse connections when Connection close is send`() {
 ```
 
 ## Summary
-We managed to add persistent connections to our server! We keep a connection open so sending sequentially multiple requests is more optimal. Next up, we will build our HTTP client that will use connection pool as well. Code is available [here](https://github.com/jakubdyszkiewicz/naphi/tree/http-5-connection-pool).
+We managed to add persistent connections to our server! We keep a connection open so sending sequentially multiple requests is more optimal. Next up, we will build our HTTP client that will use connection pool as well.
+
+Code is available [here](https://github.com/jakubdyszkiewicz/naphi/tree/http-5-connection-pool).
 
 {% include http-posts-list.html %}
