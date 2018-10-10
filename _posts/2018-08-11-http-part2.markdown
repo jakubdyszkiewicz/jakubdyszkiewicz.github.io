@@ -93,7 +93,6 @@ fun `server should refuse to accept more connections that maxIncommingConnection
         clientsThreadPool.submit {
             try {
                 val connection = URL("http://localhost:8090/").openConnection() as HttpURLConnection
-                connection.connectTimeout = 1000
                 connection.connect()
                 if (connection.responseCode == 200) {
                     completedRequest.increment()
