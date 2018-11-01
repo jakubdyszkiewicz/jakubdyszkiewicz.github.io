@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>The HTTP part 6 - HTTP Client</title>
+  <meta name="description" content="Previously we’ve built multithreaded server with a connection pooling. We’ve tested it using Apache HTTP Client. Since we’ve learned how pooling works, it’s ...">
+  <link href='https://fonts.googleapis.com/css?family=PT+Sans:400,700,400italic,700italic' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,700,200,300' rel='stylesheet' type='text/css'>
+  <link href='https://fonts.googleapis.com/css?family=Josefin+Sans:400,600,700,300' rel='stylesheet' type='text/css'>
+  <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/11/01/http-part6.html">
+  <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+
+  <script src="/assets/js/cookies-eu-banner.js"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-32136566-8"></script>
+</head>
+
+
+  <body>
+
+    
+<div class="wrapper">
+  <center> <a href="/index.html"><div class="site-title">   Dyszkiewicz; </div></a></center>
+</div>
+<div class="wrapper site-description">
+<center>  Tech blog </center>
+</div>
+<div class="wrapper">
+  <div class="trigger site-navigation">
+    <a class="page-link" href="/index.html">HOME</a>
+
+    
+    
+
+    <span class="exclamationMark">/</span><a class="page-link" href="/about/">About</a>
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>
+</div>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline"><a class="post-title-link"  href="/programming/http/server/kotlin/2018/11/01/http-part6.html">The HTTP part 6 - HTTP Client</a></h1>
+  <center>  <p class="post-meta"><time datetime="2018-11-01T08:40:31+01:00" itemprop="datePublished">Nov 1, 2018</time></p>
+    
+   </center>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>Previously we’ve built multithreaded server with a connection pooling. We’ve tested it using Apache HTTP Client. Since we’ve learned how pooling works, it’s a good time to build our own HTTP client with the connection pooling!</p>
+
+<h2 id="the-requirements">The requirements</h2>
+<p>We need to meet the following requirements:</p>
+
+<ul>
+  <li>
+    <h4 id="connections-are-pooled">Connections are pooled</h4>
+  </li>
+</ul>
+
+<p>We will reuse a connection for multiple requests. The time a connection is kept open without any activity is configured by the <em>keep alive timeout</em>.</p>
+
+<ul>
+  <li>
+    <h4 id="maximum-connections-per-destination">Maximum connections per destination</h4>
+  </li>
+</ul>
+
+<p>There should be a limit of opened connection per destination, which is a pair of host and port. To explain this, let’s say we set it to 2. We send a request that creates the first connection. If we send another one before first is completed then the new connection is created.
+If 2 requests are pending and we send yet another one, then we have to wait for one of them to finish. We wait for maximum time configured by the <em>connection request timeout</em>.</p>
+
+<p>Now, let’s get back to the situation without any opened connection. We send a request that opens a connection. We send another one but before that, the previous request is completed so the connection is released back to the pool. This second request will lease and use this connection, therefore only 1 connection would be opened.</p>
+
+<ul>
+  <li>
+    <h4 id="connection-timeout">Connection timeout</h4>
+  </li>
+</ul>
+
+<p>We will wait for a connection to be established for the maximum of time configured by the <em>connection timeout</em>.</p>
+
+<ul>
+  <li>
+    <h4 id="socket-timeout">Socket timeout</h4>
+  </li>
+</ul>
+
+<p>After establishing the connection we will wait for new data to arrive for maximum time configured by the <em>socket timeout</em>.</p>
+
+<h2 id="the-implementation">The implementation</h2>
+
+<p>This is the interface we will be coding to</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">interface</span> <span class="nc">Client</span><span class="p">:</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+    <span class="k">fun</span> <span class="nf">exchange</span><span class="p">(</span><span class="nv">url</span><span class="p">:</span> <span class="nc">String</span><span class="p">,</span> <span class="nv">request</span><span class="p">:</span> <span class="nc">Request</span><span class="p">):</span> <span class="nc">Response</span>
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">{</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h3 id="socketclient">SocketClient</h3>
+<p>First, let’s look at <code class="highlighter-rouge">SocketClient</code></p>
+
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">SocketClient</span><span class="p">(</span>
+        <span class="kd">val</span> <span class="py">keepAliveTimeout</span><span class="p">:</span> <span class="n">Duration</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">30</span><span class="p">),</span>
+        <span class="kd">val</span> <span class="py">checkKeepAliveInterval</span><span class="p">:</span> <span class="n">Duration</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">1</span><span class="p">),</span> <span class="c1">// (1)</span>
+        <span class="kd">val</span> <span class="py">maxConnectionsToDestination</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">10</span><span class="p">,</span>
+        <span class="kd">val</span> <span class="py">connectionTimeout</span><span class="p">:</span> <span class="n">Duration</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofMillis</span><span class="p">(</span><span class="m">500</span><span class="p">),</span>
+        <span class="kd">val</span> <span class="py">socketTimeout</span><span class="p">:</span> <span class="n">Duration</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofMillis</span><span class="p">(</span><span class="m">200</span><span class="p">),</span>
+        <span class="kd">val</span> <span class="py">connectionRequestTimeout</span><span class="p">:</span> <span class="n">Duration</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+<span class="p">)</span> <span class="p">:</span> <span class="nc">Client</span> <span class="p">{</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">connectionPool</span> <span class="p">=</span> <span class="n">ClientConnectionPool</span><span class="p">(</span><span class="n">keepAliveTimeout</span><span class="p">,</span> <span class="n">checkKeepAliveInterval</span><span class="p">,</span>
+            <span class="n">maxConnectionsToDestination</span><span class="p">,</span> <span class="n">connectionTimeout</span><span class="p">,</span> <span class="n">socketTimeout</span><span class="p">,</span> <span class="n">connectionRequestTimeout</span><span class="p">)</span>
+
+    <span class="k">companion</span> <span class="k">object</span> <span class="p">{</span>
+        <span class="k">const</span> <span class="kd">val</span> <span class="py">DEFAULT_HTTP_PORT</span> <span class="p">=</span> <span class="m">80</span>
+        <span class="k">const</span> <span class="kd">val</span> <span class="py">SUPPORTED_PROTOCOL</span> <span class="p">=</span> <span class="s">"http"</span>
+
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">SocketClient</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="n">init</span> <span class="p">{</span>
+        <span class="n">connectionPool</span><span class="p">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">exchange</span><span class="p">(</span><span class="nv">url</span><span class="p">:</span> <span class="nc">String</span><span class="p">,</span> <span class="nv">request</span><span class="p">:</span> <span class="nc">Request</span><span class="p">):</span> <span class="nc">Response</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">parsedUrl</span> <span class="p">=</span> <span class="n">URL</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">parsedUrl</span><span class="p">.</span><span class="n">protocol</span> <span class="p">!=</span> <span class="n">SUPPORTED_PROTOCOL</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="n">SocketClientException</span><span class="p">(</span><span class="s">"${parsedUrl.protocol} is not supported. "</span> <span class="p">+</span>
+                    <span class="s">"Only $SUPPORTED_PROTOCOL is supported"</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">connectionPool</span><span class="p">.</span><span class="n">retrieveConnection</span><span class="p">(</span><span class="n">ConnectionDestination</span><span class="p">(</span> <span class="c1">// (2)</span>
+                <span class="n">host</span> <span class="p">=</span> <span class="n">parsedUrl</span><span class="p">.</span><span class="n">host</span><span class="p">,</span>
+                <span class="n">port</span> <span class="p">=</span> <span class="k">if</span> <span class="p">(</span><span class="n">parsedUrl</span><span class="p">.</span><span class="n">port</span> <span class="p">==</span> <span class="p">-</span><span class="m">1</span><span class="p">)</span> <span class="n">DEFAULT_HTTP_PORT</span> <span class="k">else</span> <span class="n">parsedUrl</span><span class="p">.</span><span class="n">port</span><span class="p">))</span>
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="n">exchange</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="n">request</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">connection</span><span class="p">.</span><span class="n">close</span><span class="p">()</span> <span class="c1">// (4)</span>
+            <span class="k">throw</span> <span class="n">SocketClientException</span><span class="p">(</span><span class="s">"Error while exchanging data"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">finally</span> <span class="p">{</span>
+            <span class="n">connectionPool</span><span class="p">.</span><span class="n">releaseConnection</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span> <span class="c1">// (5)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">exchange</span><span class="p">(</span><span class="nv">connection</span><span class="p">:</span> <span class="nc">Connection</span><span class="p">,</span> <span class="nv">request</span><span class="p">:</span> <span class="nc">Request</span><span class="p">):</span> <span class="nc">Response</span> <span class="p">{</span> <span class="c1">// (3)</span>
+        <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">connection</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
+        <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
+
+        <span class="kd">val</span> <span class="py">requestRaw</span> <span class="p">=</span> <span class="n">request</span><span class="p">.</span><span class="n">toRaw</span><span class="p">()</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="n">requestRaw</span><span class="p">)</span>
+        <span class="n">output</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">Response</span><span class="p">.</span><span class="n">fromRaw</span><span class="p">(</span><span class="n">input</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">connectionPool</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">stats</span><span class="p">()</span> <span class="p">=</span> <span class="n">SocketClientStats</span><span class="p">(</span><span class="n">connectionPool</span><span class="p">.</span><span class="n">stats</span><span class="p">())</span>
+<span class="p">}</span>
+
+<span class="k">open</span> <span class="kd">class</span> <span class="nc">SocketClientException</span><span class="p">(</span><span class="nv">msg</span><span class="p">:</span> <span class="nc">String</span><span class="p">,</span> <span class="nv">throwable</span><span class="p">:</span> <span class="nc">Throwable</span><span class="p">?</span> <span class="p">=</span> <span class="k">null</span><span class="p">):</span> <span class="nc">RuntimeException</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">throwable</span><span class="p">)</span>
+<span class="kd">data class</span> <span class="nc">SocketClientStats</span><span class="p">(</span><span class="kd">val</span> <span class="py">poolStats</span><span class="p">:</span> <span class="n">ConnectionClientPoolStats</span><span class="p">)</span>
+</code></pre></div></div>
+
+<p>We pass a bunch of arguments that were explained above. The <code class="highlighter-rouge">checkKeepAliveInterval</code>  (1) is how often the checker for cleaning up the old connections runs.  We pass it to the connection pool that we start on class initialization.</p>
+
+<p>In the <code class="highlighter-rouge">exchange()</code> function, we retrieve (lease or create) a connection from the pool (2). Then we do I/O converting data between strings and our structures (3). If we catch an exception, we have to close the connection (4). It probably means that there was a violation of the HTTP protocol, therefore we cannot continue sending more data on this connection. Whether we succeed or not, we should release the connection back to the pool (5).</p>
+
+<h3 id="connectionpool">ConnectionPool</h3>
+<p>Here comes the difficult part. Firstly, I thought we could reuse the pool from the server, but the client’s pool is much more complicated. It supports connection leasing, limits connection per destination and checks connection inactivity in a different way.</p>
+
+<p>Let’s break it down one by one.</p>
+
+<h4 id="connection">Connection</h4>
+<p>Just like in a server pool we need a wrapper over the socket that will track the activity on this socket.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">internal</span> <span class="kd">data class</span> <span class="nc">ConnectionDestination</span><span class="p">(</span><span class="kd">val</span> <span class="py">host</span><span class="p">:</span> <span class="n">String</span><span class="p">,</span> <span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">toString</span><span class="p">():</span> <span class="nc">String</span> <span class="p">=</span> <span class="s">"$host:$port"</span>
+    <span class="k">fun</span> <span class="nf">toInetSocketAddress</span><span class="p">()</span> <span class="p">=</span> <span class="n">InetSocketAddress</span><span class="p">(</span><span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="k">internal</span> <span class="kd">class</span> <span class="nc">Connection</span><span class="p">(</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">,</span>
+        <span class="kd">val</span> <span class="py">destination</span><span class="p">:</span> <span class="n">ConnectionDestination</span><span class="p">,</span>
+        <span class="nv">keepAliveTimeout</span><span class="p">:</span> <span class="nc">Duration</span><span class="p">,</span>
+        <span class="nv">checkKeepAliveInterval</span><span class="p">:</span> <span class="nc">Duration</span>
+<span class="p">)</span> <span class="p">{</span>
+
+    <span class="k">companion</span> <span class="k">object</span> <span class="p">{</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">Connection</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="cm">/**
+     * Counter that is incremented on periodic inactivity check. It is reset on new connection activity
+     */</span>
+    <span class="k">private</span> <span class="kd">var</span> <span class="py">checks</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">0</span> <span class="c1">// (1)</span>
+
+    <span class="cm">/**
+     * If the connection is checked for inactivity for inactiveChecksThreshold times and there was no activity
+     * it is assumed that connection is no longer active. It is optimization so we don't have to call time()
+     * for every byte on socket.
+     */</span>
+    <span class="c1">// (3)</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">inactiveChecksThreshold</span> <span class="p">=</span> <span class="p">(</span><span class="n">keepAliveTimeout</span><span class="p">.</span><span class="n">toMillis</span><span class="p">()</span> <span class="p">/</span> <span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">()).</span><span class="n">toInt</span><span class="p">()</span>
+
+    <span class="k">internal</span> <span class="k">fun</span> <span class="nf">isInactive</span><span class="p">():</span> <span class="nc">Boolean</span> <span class="p">=</span> <span class="n">checks</span><span class="p">++</span> <span class="p">&gt;</span> <span class="n">inactiveChecksThreshold</span> <span class="c1">// (2)</span>
+
+    <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">{</span>
+        <span class="k">try</span> <span class="p">{</span>
+            <span class="n">socket</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Could not close the connection"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">isClosed</span><span class="p">():</span> <span class="nc">Boolean</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">isClosed</span>
+
+    <span class="k">fun</span> <span class="nf">getInputStream</span><span class="p">():</span> <span class="nc">InputStream</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">()</span>
+            <span class="o">?.</span><span class="n">let</span><span class="p">(</span><span class="o">::</span><span class="n">ActivityTrackingInputStream</span><span class="p">)</span>
+            <span class="o">?:</span> <span class="k">throw</span> <span class="n">ConnectionException</span><span class="p">(</span><span class="s">"Could not obtain stream. Is socket closed?"</span><span class="p">)</span>
+
+    <span class="k">fun</span> <span class="nf">getOutputStream</span><span class="p">():</span> <span class="nc">OutputStream</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">()</span>
+            <span class="o">?.</span><span class="n">let</span><span class="p">(</span><span class="o">::</span><span class="n">ActivityTrackingOutputStream</span><span class="p">)</span>
+            <span class="o">?:</span> <span class="k">throw</span> <span class="n">ConnectionException</span><span class="p">(</span><span class="s">"Could not obtain stream. Is socket closed?"</span><span class="p">)</span>
+
+    <span class="k">private</span> <span class="k">inner</span> <span class="kd">class</span> <span class="nc">ActivityTrackingInputStream</span><span class="p">(</span><span class="kd">val</span> <span class="py">inputStream</span><span class="p">:</span> <span class="n">InputStream</span><span class="p">):</span> <span class="nc">InputStream</span><span class="p">()</span> <span class="p">{</span>
+
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">read</span><span class="p">():</span> <span class="nc">Int</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">read</span><span class="p">().</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">read</span><span class="p">(</span><span class="nv">b</span><span class="p">:</span> <span class="nc">ByteArray</span><span class="p">?):</span> <span class="nc">Int</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">read</span><span class="p">(</span><span class="n">b</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">read</span><span class="p">(</span><span class="nv">b</span><span class="p">:</span> <span class="nc">ByteArray</span><span class="p">?,</span> <span class="nv">off</span><span class="p">:</span> <span class="nc">Int</span><span class="p">,</span> <span class="nv">len</span><span class="p">:</span> <span class="nc">Int</span><span class="p">):</span> <span class="nc">Int</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">read</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">off</span><span class="p">,</span> <span class="n">len</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">skip</span><span class="p">(</span><span class="nv">n</span><span class="p">:</span> <span class="nc">Long</span><span class="p">):</span> <span class="nc">Long</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">skip</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">available</span><span class="p">():</span> <span class="nc">Int</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">available</span><span class="p">()</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">reset</span><span class="p">()</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">reset</span><span class="p">()</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">mark</span><span class="p">(</span><span class="nv">readlimit</span><span class="p">:</span> <span class="nc">Int</span><span class="p">)</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">mark</span><span class="p">(</span><span class="n">readlimit</span><span class="p">)</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">markSupported</span><span class="p">():</span> <span class="nc">Boolean</span> <span class="p">=</span> <span class="n">inputStream</span><span class="p">.</span><span class="n">markSupported</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">inner</span> <span class="kd">class</span> <span class="nc">ActivityTrackingOutputStream</span><span class="p">(</span><span class="kd">val</span> <span class="py">outputStream</span><span class="p">:</span> <span class="n">OutputStream</span><span class="p">):</span> <span class="nc">OutputStream</span><span class="p">()</span> <span class="p">{</span>
+
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">write</span><span class="p">(</span><span class="nv">b</span><span class="p">:</span> <span class="nc">Int</span><span class="p">)</span> <span class="p">=</span> <span class="n">outputStream</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">b</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">write</span><span class="p">(</span><span class="nv">b</span><span class="p">:</span> <span class="nc">ByteArray</span><span class="p">?)</span> <span class="p">=</span> <span class="n">outputStream</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">b</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">write</span><span class="p">(</span><span class="nv">b</span><span class="p">:</span> <span class="nc">ByteArray</span><span class="p">?,</span> <span class="nv">off</span><span class="p">:</span> <span class="nc">Int</span><span class="p">,</span> <span class="nv">len</span><span class="p">:</span> <span class="nc">Int</span><span class="p">)</span> <span class="p">=</span> <span class="n">outputStream</span><span class="p">.</span><span class="n">write</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">off</span><span class="p">,</span> <span class="n">len</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">checks</span> <span class="p">=</span> <span class="m">0</span> <span class="p">}</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">flush</span><span class="p">()</span> <span class="p">=</span> <span class="n">outputStream</span><span class="p">.</span><span class="n">flush</span><span class="p">()</span>
+        <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">=</span> <span class="n">outputStream</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">open</span> <span class="kd">class</span> <span class="nc">ConnectionException</span><span class="p">(</span><span class="nv">msg</span><span class="p">:</span> <span class="nc">String</span><span class="p">,</span> <span class="nv">throwable</span><span class="p">:</span> <span class="nc">Throwable</span><span class="p">?</span> <span class="p">=</span> <span class="k">null</span><span class="p">):</span> <span class="nc">RuntimeException</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">throwable</span><span class="p">)</span>
+</code></pre></div></div>
+<p>How should we tell whether the connection is no longer active? It would be so easy to save the timestamp of the last activity and compare it to <code class="highlighter-rouge">keepAliveTimeout</code>, but calling <code class="highlighter-rouge">System.nanoTime()</code> on every byte send/received would create an overhead. Instead, we create a counter (1) that is incremented on every inactivity check (2).  We know how often this method will be called because of the <code class="highlighter-rouge">checkKeepAliveInternal</code> argument, so we can compute (3) after how many checks the connection is no longer active.
+If there is any activity, then <code class="highlighter-rouge">ActivityTrackingInputStream</code> and <code class="highlighter-rouge">ActivityTrackingOutputStream</code> decorators will reset the counter.</p>
+
+<p>This solution is not ideal, because we have to trust the client of this class to run the <code class="highlighter-rouge">isInactive()</code> method with the <code class="highlighter-rouge">checkKeepAliveInterval</code> interval. On the other hand, the <code class="highlighter-rouge">Connection</code> class won’t be visible to the end user of our <code class="highlighter-rouge">SocketClient</code> so I think we can live with that.</p>
+
+<h4 id="connections">Connections</h4>
+<p>Now we need a container from which we can lease connections.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="kd">class</span> <span class="nc">Connections</span> <span class="p">{</span>
+
+    <span class="k">companion</span> <span class="k">object</span> <span class="p">{</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">Connections</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">leased</span> <span class="p">=</span> <span class="n">ConcurrentHashMap</span><span class="p">&lt;</span><span class="n">ConnectionDestination</span><span class="p">,</span> <span class="n">BlockingDeque</span><span class="p">&lt;</span><span class="n">Connection</span><span class="p">&gt;&gt;()</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">available</span> <span class="p">=</span> <span class="n">ConcurrentHashMap</span><span class="p">&lt;</span><span class="n">ConnectionDestination</span><span class="p">,</span> <span class="n">BlockingDeque</span><span class="p">&lt;</span><span class="n">Connection</span><span class="p">&gt;&gt;()</span>
+
+    <span class="k">fun</span> <span class="nf">addLeased</span><span class="p">(</span><span class="nv">connection</span><span class="p">:</span> <span class="nc">Connection</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// (2)</span>
+        <span class="n">leased</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">destination</span><span class="p">)</span> <span class="p">+=</span> <span class="n">connection</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">lease</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">):</span> <span class="nc">Connection</span><span class="p">?</span> <span class="p">{</span> <span class="c1">// (1)</span>
+        <span class="c1">// There can be already closed connection, but we want to return an active one</span>
+        <span class="k">do</span> <span class="p">{</span>
+            <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">available</span><span class="p">(</span><span class="n">destination</span><span class="p">).</span><span class="n">poll</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">connection</span> <span class="p">==</span> <span class="k">null</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">return</span> <span class="k">null</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="k">if</span> <span class="p">(!</span><span class="n">connection</span><span class="p">.</span><span class="n">isClosed</span><span class="p">())</span> <span class="p">{</span>
+                <span class="n">addLeased</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">connection</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="k">while</span><span class="p">(</span><span class="k">true</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">release</span><span class="p">(</span><span class="nv">connection</span><span class="p">:</span> <span class="nc">Connection</span><span class="p">)</span> <span class="p">{</span> <span class="c1">// (3)</span>
+        <span class="n">leased</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">destination</span><span class="p">).</span><span class="n">remove</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">available</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">destination</span><span class="p">)</span> <span class="p">+=</span> <span class="n">connection</span>
+    <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">closeStale</span><span class="p">()</span> <span class="p">{</span> <span class="c1">// (4)</span>
+        <span class="n">closeStale</span><span class="p">(</span><span class="n">leased</span><span class="p">)</span>
+        <span class="n">closeStale</span><span class="p">(</span><span class="n">available</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">leased</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">)</span> <span class="p">=</span>
+            <span class="n">leased</span><span class="p">.</span><span class="n">computeIfAbsent</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="p">{</span> <span class="n">LinkedBlockingDeque</span><span class="p">()</span> <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">available</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">)</span> <span class="p">=</span>
+            <span class="n">available</span><span class="p">.</span><span class="n">computeIfAbsent</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="p">{</span> <span class="n">LinkedBlockingDeque</span><span class="p">()</span> <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">closeStale</span><span class="p">(</span>
+            <span class="nv">connectionsForDestination</span><span class="p">:</span> <span class="nc">ConcurrentHashMap</span><span class="p">&lt;</span><span class="nc">ConnectionDestination</span><span class="p">,</span> <span class="nc">BlockingDeque</span><span class="err">&lt;</span><span class="nc">Connection</span><span class="p">&gt;&gt;)</span> <span class="p">{</span>
+        <span class="n">connectionsForDestination</span><span class="p">.</span><span class="n">forEach</span> <span class="p">{</span> <span class="n">_</span><span class="p">,</span> <span class="n">connections</span> <span class="p">-&gt;</span>
+            <span class="kd">val</span> <span class="py">staleConnections</span> <span class="p">=</span> <span class="n">connections</span><span class="p">.</span><span class="n">filter</span><span class="p">(</span><span class="n">Connection</span><span class="o">::</span><span class="n">isInactive</span><span class="p">)</span>
+            <span class="n">connections</span><span class="p">.</span><span class="n">removeAll</span><span class="p">(</span><span class="n">staleConnections</span><span class="p">)</span>
+            <span class="n">staleConnections</span><span class="p">.</span><span class="n">forEach</span> <span class="p">{</span>
+                <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Closing connection to ${it.destination} due to not being active"</span><span class="p">)</span>
+                <span class="n">it</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+<span class="p">}</span>
+</code></pre></div></div>
+<p>We keep separate queues of connections for leased and available connections. We can lease a connection (1), but we have to be careful not to return a closed connection. We can add already leased connection (2). This will be useful when we will create a connection and return it immediately to the client. We can release connection (3) so it is placed back into the leased queue.
+There is also a method for closing stale connections (4), it seeks for inactive connections, closes it and removes those from the queues.</p>
+
+<h4 id="connectionpool-1">ConnectionPool</h4>
+<p>Now we can put it all together.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">internal</span> <span class="kd">class</span> <span class="nc">ClientConnectionPool</span><span class="p">(</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">keepAliveTimeout</span><span class="p">:</span> <span class="n">Duration</span><span class="p">,</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">checkKeepAliveInterval</span><span class="p">:</span> <span class="n">Duration</span><span class="p">,</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">maxConnectionsPerDestination</span><span class="p">:</span> <span class="n">Int</span><span class="p">,</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">connectionTimeout</span><span class="p">:</span> <span class="n">Duration</span><span class="p">,</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">socketTimeout</span><span class="p">:</span> <span class="n">Duration</span><span class="p">,</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">connectionRequestTimeout</span><span class="p">:</span> <span class="n">Duration</span>
+<span class="p">):</span> <span class="nc">Closeable</span> <span class="p">{</span>
+
+    <span class="k">companion</span> <span class="k">object</span> <span class="p">{</span>
+        <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">ClientConnectionPool</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">connections</span> <span class="p">=</span> <span class="n">Connections</span><span class="p">()</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">checkerThreadPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newSingleThreadScheduledExecutor</span><span class="p">(</span>
+            <span class="n">IncrementingThreadFactory</span><span class="p">(</span><span class="s">"connection-pool-checker"</span><span class="p">))</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">retrievingSemaphores</span> <span class="p">=</span> <span class="n">ConcurrentHashMap</span><span class="p">&lt;</span><span class="n">ConnectionDestination</span><span class="p">,</span> <span class="n">Semaphore</span><span class="p">&gt;()</span>
+    <span class="k">private</span> <span class="kd">val</span> <span class="py">connectionsEstablished</span> <span class="p">=</span> <span class="n">LongAdder</span><span class="p">()</span>
+
+    <span class="k">fun</span> <span class="nf">start</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">scheduleClosingStaleConnections</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="cm">/**
+     * You have to manually call `releaseConnection()` when you are done with using the connection
+     */</span>
+    <span class="k">fun</span> <span class="nf">retrieveConnection</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">):</span> <span class="nc">Connection</span> <span class="p">{</span>
+        <span class="n">acquirePermit</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="c1">// (1)</span>
+        <span class="k">return</span> <span class="n">leaseConnection</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="o">?:</span> <span class="n">createConnection</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="c1">// (3)</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">acquirePermit</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"Waiting for acquire permit to retrieve connection to $destination"</span><span class="p">)</span>
+        <span class="c1">// (2)</span>
+        <span class="k">if</span> <span class="p">(!</span><span class="n">semaphore</span><span class="p">(</span><span class="n">destination</span><span class="p">).</span><span class="n">tryAcquire</span><span class="p">(</span><span class="n">connectionRequestTimeout</span><span class="p">.</span><span class="n">toMillis</span><span class="p">(),</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">))</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="n">ClientConnectionPoolException</span><span class="p">(</span>
+                    <span class="s">"Timeout on waiting to retrieve connection. Limit of open connections exceeded."</span><span class="p">)</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">semaphore</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">)</span> <span class="p">=</span>
+            <span class="n">retrievingSemaphores</span><span class="p">.</span><span class="n">computeIfAbsent</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span> <span class="p">{</span> <span class="n">Semaphore</span><span class="p">(</span><span class="n">maxConnectionsPerDestination</span><span class="p">)</span> <span class="p">}</span>
+
+    <span class="k">fun</span> <span class="nf">stats</span><span class="p">():</span> <span class="nc">ConnectionClientPoolStats</span> <span class="p">=</span> <span class="n">ConnectionClientPoolStats</span><span class="p">(</span><span class="n">connectionsEstablished</span><span class="p">.</span><span class="n">sum</span><span class="p">())</span>
+
+    <span class="k">fun</span> <span class="nf">releaseConnection</span><span class="p">(</span><span class="nv">connection</span><span class="p">:</span> <span class="nc">Connection</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Releasing connection to ${connection.destination}"</span><span class="p">)</span>
+        <span class="n">connections</span><span class="p">.</span><span class="n">release</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">semaphore</span><span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">destination</span><span class="p">).</span><span class="n">release</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">createConnection</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">):</span> <span class="nc">Connection</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">socket</span> <span class="p">=</span> <span class="k">try</span> <span class="p">{</span>
+            <span class="n">Socket</span><span class="p">().</span><span class="n">also</span> <span class="p">{</span> <span class="c1">// (4)</span>
+                <span class="n">it</span><span class="p">.</span><span class="n">soTimeout</span> <span class="p">=</span> <span class="n">socketTimeout</span><span class="p">.</span><span class="n">toMillis</span><span class="p">().</span><span class="n">toInt</span><span class="p">()</span>
+                <span class="n">it</span><span class="p">.</span><span class="n">connect</span><span class="p">(</span><span class="n">destination</span><span class="p">.</span><span class="n">toInetSocketAddress</span><span class="p">(),</span> <span class="n">connectionTimeout</span><span class="p">.</span><span class="n">toMillis</span><span class="p">().</span><span class="n">toInt</span><span class="p">())</span>
+            <span class="p">}</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">SocketTimeoutException</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="n">ConnectionTimeoutException</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="n">ConnectionException</span><span class="p">(</span><span class="s">"Could not connect to $destination"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">Connection</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="n">destination</span><span class="p">,</span> <span class="n">keepAliveTimeout</span><span class="p">,</span> <span class="n">checkKeepAliveInterval</span><span class="p">)</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Created connection to $destination"</span><span class="p">)</span>
+        <span class="n">connections</span><span class="p">.</span><span class="n">addLeased</span><span class="p">(</span><span class="n">connection</span><span class="p">)</span>
+        <span class="n">connectionsEstablished</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span> <span class="c1">// (5)</span>
+        <span class="k">return</span> <span class="n">connection</span>
+    <span class="p">}</span>
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">leaseConnection</span><span class="p">(</span><span class="nv">destination</span><span class="p">:</span> <span class="nc">ConnectionDestination</span><span class="p">):</span> <span class="nc">Connection</span><span class="p">?</span> <span class="p">{</span>
+        <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"Leasing a connection to $destination"</span><span class="p">)</span>
+        <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">connections</span><span class="p">.</span><span class="n">lease</span><span class="p">(</span><span class="n">destination</span><span class="p">)</span>
+        <span class="k">when</span> <span class="p">(</span><span class="n">connection</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">null</span> <span class="p">-&gt;</span> <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"There was no connection to lease"</span><span class="p">)</span>
+            <span class="k">else</span> <span class="p">-&gt;</span> <span class="n">logger</span><span class="p">.</span><span class="n">debug</span><span class="p">(</span><span class="s">"Connection to $destination leased"</span><span class="p">)</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="n">connection</span>
+    <span class="p">}</span>
+
+
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">scheduleClosingStaleConnections</span><span class="p">()</span> <span class="p">{</span> <span class="c1">// 6</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">scheduleAtFixedRate</span><span class="p">({</span>
+            <span class="k">try</span> <span class="p">{</span>
+                <span class="n">connections</span><span class="p">.</span><span class="n">closeStale</span><span class="p">()</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">logger</span><span class="p">.</span><span class="n">error</span><span class="p">(</span><span class="s">"Error while closing stale connections"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">},</span> <span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">(),</span> <span class="n">checkKeepAliveInterval</span><span class="p">.</span><span class="n">toMillis</span><span class="p">(),</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">)</span>
+    <span class="p">}</span>
+
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">shutdown</span><span class="p">()</span>
+        <span class="n">checkerThreadPool</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">1</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">SECONDS</span><span class="p">)</span>
+    <span class="p">}</span>
+
+<span class="p">}</span>
+</code></pre></div></div>
+<p>To retrieve a connection we have to acquire a permit (1). A permit is a semaphore that guards the pool against creating more than the limit of connections per destination. If we acquired all the permits, then the next request for a connection will wait for the max of <code class="highlighter-rouge">connectionRequestTimeout</code> duration (2). 
+If we successfully acquired the permit it either means that we can lease a connection or create one (3). Firstly, we try to lease a connection because we’d rather reuse a connection than create a new one. If we succeeded, we return it to the user. Otherwise, we need to create a new one. While connecting, we have to set socket and connection timeouts (4). A new connection is added to the <code class="highlighter-rouge">connections</code> as leased and immediately returned to the client.
+We track the number of established connections for testing purposes (5).</p>
+
+<p>When we start the pool, we also schedule the closing of stale connections at <code class="highlighter-rouge">checkKeepAliveInterval</code> rate (6).</p>
+
+<h2 id="tests">Tests</h2>
+<p>Tests are similar to the suite we wrote for the multithreaded server. The main happy path to check whether client and server reuse connections.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="nf">client</span> <span class="n">should</span> <span class="n">reuse</span> <span class="n">opened</span> <span class="n">connections</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="n">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
+        <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">,</span> <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">))</span>
+    <span class="p">})</span>
+
+    <span class="c1">// when</span>
+    <span class="n">repeat</span><span class="p">(</span><span class="n">times</span> <span class="p">=</span> <span class="m">3</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span>
+                <span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:8090"</span><span class="p">,</span>
+                <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span>
+                        <span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span>
+                        <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">POST</span><span class="p">,</span>
+                        <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">)))</span>
+    <span class="p">}</span>
+
+    <span class="c1">// then</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">server</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">()).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+    <span class="n">assertThat</span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">stats</span><span class="p">().</span><span class="n">poolStats</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">1</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>You can see the whole test suit <a href="https://github.com/jakubdyszkiewicz/naphi/blob/http-6-client/src/test/kotlin/org/naphi/SocketClientTest.kt">here</a>.</p>
+
+<h3 id="testing-the-timeouts">Testing the timeouts</h3>
+
+<p>Testing timeouts was an interesting case. Socket timeout is easy to test, we can just slow down response from a server and check if the client fails, but what about the connection timeout? How can we slow down the process of establishing a connection? We could use <a href="https://github.com/Shopify/toxiproxy">Toxiproxy</a>, but we need that in the test.</p>
+
+<p>What we can use is an IP address that is non-routable. There are a couple of address blocks like 10.0.0.0/8, or 192.0.0.0/24 that are meant to be used for a private network. A packet with such destination IP will be dropped by a router, so we will never hear back the answer for our <code class="highlighter-rouge">SYN</code> TCP segment. The problem is that an IP that is non-routable on my private network can be used by someone who runs the test in another network. <a href="https://en.wikipedia.org/wiki/Reserved_IP_addresses">Digging deeper</a>, there is an address block that should be used only for documentation and should not be used in practice - it’s 192.0.2.0/24.</p>
+
+<p>Let’s try that</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="nf">should</span> <span class="k">throw</span> <span class="n">exception</span> <span class="k">when</span> <span class="n">connection</span> <span class="n">timed</span> <span class="k">out</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// given</span>
+    <span class="kd">val</span> <span class="py">nonRoutableIp</span> <span class="p">=</span> <span class="s">"192.0.2.0"</span>
+
+    <span class="c1">// when &amp; then</span>
+    <span class="n">assertThatThrownBy</span> <span class="p">{</span> <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span>
+            <span class="n">url</span> <span class="p">=</span> <span class="s">"http://$nonRoutableIp:80"</span><span class="p">,</span>
+            <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span>
+                    <span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span>
+                    <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">POST</span><span class="p">,</span>
+                    <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">)))</span> <span class="p">}</span>
+            <span class="p">.</span><span class="n">isInstanceOf</span><span class="p">(</span><span class="n">ConnectionTimeoutException</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>It passes! Let’s check that in the Wiremock
+<a href="http://localhost:4000/assets/http6/non_routable.png"><img src="http://localhost:4000/assets/http6/non_routable.png" alt="non_routable_connection" /></a>
+Indeed, we send the <code class="highlighter-rouge">SYN</code> segment and never hear back so retransmission kicks in and eventually we time out the operation.</p>
+
+<h3 id="testing-the-concurrency">Testing the concurrency</h3>
+
+<p>I’m 100% sure there are concurrency bugs in our client. What we can test at least is the limit of maximum connections per destination. To do that, we can spin up set of servers, create a client and flood servers with requests from multiple threads.</p>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">SocketClientMultithreadingTest</span> <span class="p">{</span>
+
+    <span class="kd">val</span> <span class="py">requestParallelism</span> <span class="p">=</span> <span class="m">100</span>
+    <span class="kd">val</span> <span class="py">requests</span> <span class="p">=</span> <span class="m">1</span><span class="n">_000_000</span>
+    <span class="kd">val</span> <span class="py">sampleRate</span> <span class="p">=</span> <span class="m">10</span>
+    <span class="kd">val</span> <span class="py">nServers</span> <span class="p">=</span> <span class="m">10</span>
+    <span class="kd">val</span> <span class="py">servers</span> <span class="p">=</span> <span class="n">mutableListOf</span><span class="p">&lt;</span><span class="n">Server</span><span class="p">&gt;()</span>
+    <span class="kd">val</span> <span class="py">client</span> <span class="p">=</span> <span class="n">SocketClient</span><span class="p">(</span><span class="n">maxConnectionsToDestination</span> <span class="p">=</span> <span class="m">5</span><span class="p">,</span>
+            <span class="n">socketTimeout</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">10</span><span class="p">),</span>
+            <span class="n">connectionTimeout</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">1</span><span class="p">),</span>
+            <span class="n">connectionRequestTimeout</span> <span class="p">=</span> <span class="n">Duration</span><span class="p">.</span><span class="n">ofSeconds</span><span class="p">(</span><span class="m">10</span><span class="p">))</span>
+    <span class="kd">val</span> <span class="py">random</span> <span class="p">=</span> <span class="n">Random</span><span class="p">()</span>
+
+    <span class="nd">@Before</span>
+    <span class="k">fun</span> <span class="nf">setupServers</span><span class="p">()</span> <span class="p">{</span>
+        <span class="n">repeat</span><span class="p">(</span><span class="n">nServers</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">servers</span> <span class="p">+=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span> <span class="p">+</span> <span class="n">it</span><span class="p">,</span> <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
+                <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">,</span> <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">))</span>
+            <span class="p">})</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+
+    <span class="nd">@After</span>
+    <span class="k">fun</span> <span class="nf">cleanup</span><span class="p">()</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">cleaning</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newFixedThreadPool</span><span class="p">(</span><span class="n">nServers</span><span class="p">)</span>
+        <span class="n">servers</span><span class="p">.</span><span class="n">map</span> <span class="p">{</span> <span class="n">cleaning</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">close</span><span class="p">()</span> <span class="p">}</span> <span class="p">}</span>
+                <span class="p">.</span><span class="n">map</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="k">get</span><span class="p">()</span> <span class="p">}</span>
+        <span class="n">cleaning</span><span class="p">.</span><span class="n">awaitTermination</span><span class="p">(</span><span class="m">0</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MILLISECONDS</span><span class="p">)</span>
+        <span class="n">client</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="p">}</span>
+
+    <span class="nd">@Test</span>
+    <span class="nd">@Ignore</span><span class="p">(</span><span class="s">"This is HEAVY test"</span><span class="p">)</span>
+    <span class="k">fun</span> <span class="err">`</span><span class="nf">should</span> <span class="n">allow</span> <span class="n">to</span> <span class="k">open</span> <span class="n">max</span> <span class="n">of</span> <span class="m">5</span> <span class="n">connections</span> <span class="n">to</span> <span class="n">a</span> <span class="n">destination</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">threadPool</span> <span class="p">=</span> <span class="n">Executors</span><span class="p">.</span><span class="n">newFixedThreadPool</span><span class="p">(</span><span class="n">requestParallelism</span><span class="p">)</span>
+        <span class="kd">val</span> <span class="py">requestsDone</span> <span class="p">=</span> <span class="n">CountDownLatch</span><span class="p">(</span><span class="n">requests</span><span class="p">)</span>
+        <span class="kd">val</span> <span class="py">errors</span> <span class="p">=</span> <span class="n">mutableListOf</span><span class="p">&lt;</span><span class="n">String</span><span class="p">&gt;()</span>
+
+        <span class="n">repeat</span><span class="p">(</span><span class="n">requests</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">threadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
+                <span class="kd">val</span> <span class="py">chosenServer</span> <span class="p">=</span> <span class="n">random</span><span class="p">.</span><span class="n">nextInt</span><span class="p">(</span><span class="n">nServers</span><span class="p">)</span>
+                <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="k">try</span> <span class="p">{</span>
+                    <span class="n">client</span><span class="p">.</span><span class="n">exchange</span><span class="p">(</span>
+                            <span class="n">url</span> <span class="p">=</span> <span class="s">"http://localhost:${8090 + chosenServer}"</span><span class="p">,</span>
+                            <span class="n">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">(</span>
+                                    <span class="n">path</span> <span class="p">=</span> <span class="s">"/"</span><span class="p">,</span>
+                                    <span class="n">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">POST</span><span class="p">,</span>
+                                    <span class="n">headers</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="s">"content-length"</span> <span class="n">to</span> <span class="s">"0"</span><span class="p">)))</span>
+                <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">e</span><span class="p">.</span><span class="n">printStackTrace</span><span class="p">()</span>
+                    <span class="k">throw</span> <span class="n">e</span>
+                <span class="p">}</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">status</span> <span class="p">!=</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">errors</span> <span class="p">+=</span> <span class="s">"Response was $response"</span>
+                <span class="p">}</span>
+                <span class="n">requestsDone</span><span class="p">.</span><span class="n">countDown</span><span class="p">()</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="n">requestsDone</span><span class="p">.</span><span class="n">await</span><span class="p">(</span><span class="m">1</span><span class="p">,</span> <span class="n">TimeUnit</span><span class="p">.</span><span class="n">MINUTES</span><span class="p">)</span>
+        <span class="n">assertThat</span><span class="p">(</span><span class="n">errors</span><span class="p">).</span><span class="n">isEmpty</span><span class="p">()</span>
+        <span class="n">assertThat</span><span class="p">(</span><span class="n">requestsDone</span><span class="p">.</span><span class="n">count</span><span class="p">).</span><span class="n">isEqualTo</span><span class="p">(</span><span class="m">0</span><span class="p">)</span>
+        <span class="n">assertThat</span><span class="p">(</span><span class="n">client</span><span class="p">.</span><span class="n">stats</span><span class="p">().</span><span class="n">poolStats</span><span class="p">.</span><span class="n">connectionsEstablished</span><span class="p">.</span><span class="n">toInt</span><span class="p">())</span>
+                <span class="p">.</span><span class="n">isLessThanOrEqualTo</span><span class="p">(</span><span class="n">nServers</span> <span class="p">*</span> <span class="n">client</span><span class="p">.</span><span class="n">maxConnectionsToDestination</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+<p>Sending and receiving a milion requests takes about 20s on my laptop, but most importantly we did not exceeded <code class="highlighter-rouge">maxConnectionsToDestination</code> limit. This is also a smoke test wheter we even can use <code class="highlighter-rouge">SocketClient</code> from the multiple threads. 
+We will benchmark and profile our server and client in the future.</p>
+
+<h2 id="summary">Summary</h2>
+<p>We built an HTTP client meeting all the requirements!</p>
+
+<p>The next step is to make our server and client more user-friendly. We will build a simple application that will use the server and the brand new client. We will look at things like routing, filters and exception handling.</p>
+
+<p>Code is available <a href="https://github.com/jakubdyszkiewicz/naphi/tree/http-6-client">here</a>.</p>
+
+<h1 id="other-articles-of-the-series">Other articles of the series</h1>
+<p>This article is a part of the HTTP series</p>
+<ul>
+  
+    <li>
+        
+            The HTTP part 6 - HTTP Client
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/10/09/http-part5.html">The HTTP part 5 - Persistent connections</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/09/09/http-part4.html">The HTTP part 4 - Multithreading</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/09/03/http-part3.html">The HTTP part 3 - Parsing request &amp; response</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/08/11/http-part2.html">The HTTP part 2 - Connections Queue</a>
+        
+    </li>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/07/31/http-part1.html">The HTTP part 1 - Let's start small</a>
+        
+    </li>
+  
+</ul>
+
+  </div>
+
+  
+  <div id="disqus_thread"></div>
+<script>
+/**
+* RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+* LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables
+*/
+/*
+var disqus_config = function () {
+this.page.url = PAGE_URL; // Replace PAGE_URL with your page's canonical URL variable
+this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+};
+*/
+(function() { // DON'T EDIT BELOW THIS LINE
+var d = document, s = d.createElement('script');
+
+s.src = '//dyszkiewicz.disqus.com/embed.js';
+
+s.setAttribute('data-timestamp', +new Date());
+(d.head || d.body).appendChild(s);
+})();
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" rel="nofollow">comments powered by Disqus.</a></noscript>
+  
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading small-site-title">Dyszkiewicz;</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list footer-content">
+          <li>Based on <a href="http://github.com/hemangsk/Gravity">Gravity</a></li>
+          <li>Made with <i class="fa fa-heart"></i> on <a href="jekyll.com"><span style="color:black">Jekyll</a></span></li>
+
+
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2 footer-content">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jakubdyszkiewicz"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jakubdyszkiewicz</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jdyszkiewicz"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jdyszkiewicz</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3 site-description">
+        <!-- <p>Tech blog</p> -->
+      </div>
+    </div>
+
+    <div id="cookies-eu-banner" style="display: none;">
+      This site uses cookies to collect visits statistics via Google Analytics
+      <!-- By continuing your visit to this site, you accept the use of cookies by Google Analytics to make visits statistics. -->
+      <a href="https://policies.google.com/technologies/cookies" target="_blank" id="cookies-eu-more" class="cookies-eu-more-link">Read more</a>
+      <!-- <button id="cookies-eu-reject">No</button> -->
+      <button id="cookies-eu-accept">OK</button>
+    </div>
+
+    <script>
+      new CookiesEuBanner(function(){
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'UA-32136566-8');
+      }, true);
+    </script>
+  </div>
+
+
+</footer>
+
+
+  </body>
+
+</html>

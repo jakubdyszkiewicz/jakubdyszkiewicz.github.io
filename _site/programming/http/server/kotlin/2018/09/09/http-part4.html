@@ -83,7 +83,7 @@
         <span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">,</span>
         <span class="kd">val</span> <span class="py">maxIncomingConnections</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">10</span><span class="p">,</span>
         <span class="kd">val</span> <span class="py">maxWorkerThreads</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">50</span>
-<span class="p">):</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+<span class="p">):</span> <span class="nc">AutoCloseable</span> <span class="p">{</span>
 
     <span class="k">private</span> <span class="kd">val</span> <span class="py">logger</span> <span class="p">=</span> <span class="n">LoggerFactory</span><span class="p">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">Server</span><span class="o">::</span><span class="k">class</span><span class="p">.</span><span class="n">java</span><span class="p">)</span>
 
@@ -96,11 +96,11 @@
         <span class="n">acceptingConnectionsThreadPool</span><span class="p">.</span><span class="n">submit</span><span class="p">(</span><span class="k">this</span><span class="o">::</span><span class="n">acceptConnections</span><span class="p">)</span>
     <span class="p">}</span>
 
-    <span class="k">private</span> <span class="k">fun</span> <span class="n">acceptConnections</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">acceptConnections</span><span class="p">()</span> <span class="p">{</span>
         <span class="k">while</span> <span class="p">(!</span><span class="n">serverSocket</span><span class="p">.</span><span class="n">isClosed</span><span class="p">)</span> <span class="p">{</span>
             <span class="k">try</span> <span class="p">{</span>
                 <span class="n">acceptConnection</span><span class="p">()</span>
-            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
                 <span class="k">when</span> <span class="p">{</span>
                     <span class="n">e</span> <span class="k">is</span> <span class="n">InterruptedException</span> <span class="p">-&gt;</span> <span class="k">throw</span> <span class="n">e</span>
                     <span class="n">e</span> <span class="k">is</span> <span class="n">SocketException</span> <span class="p">&amp;&amp;</span> <span class="n">serverSocket</span><span class="p">.</span><span class="n">isClosed</span> <span class="p">-&gt;</span> <span class="n">logger</span><span class="p">.</span><span class="n">trace</span><span class="p">(</span><span class="s">"Socket was closed"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
@@ -110,18 +110,18 @@
         <span class="p">}</span>
     <span class="p">}</span>
 
-    <span class="k">private</span> <span class="k">fun</span> <span class="n">acceptConnection</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">acceptConnection</span><span class="p">()</span> <span class="p">{</span>
         <span class="kd">val</span> <span class="py">socket</span> <span class="p">=</span> <span class="n">serverSocket</span><span class="p">.</span><span class="n">accept</span><span class="p">()</span> <span class="c1">// 2</span>
         <span class="n">handlerThreadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span> <span class="c1">// 3</span>
             <span class="k">try</span> <span class="p">{</span>
                 <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">)</span>
-            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
                 <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Could not handle connection"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
             <span class="p">}</span>
         <span class="p">}</span>
     <span class="p">}</span>
 
-    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">handleConnection</span><span class="p">(</span><span class="nv">socket</span><span class="p">:</span> <span class="nc">Socket</span><span class="p">)</span> <span class="p">{</span>
         <span class="n">socket</span><span class="p">.</span><span class="n">use</span> <span class="p">{</span>
             <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">it</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
             <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">it</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
@@ -129,7 +129,7 @@
             <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="k">try</span> <span class="p">{</span>
                 <span class="kd">val</span> <span class="py">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">.</span><span class="n">fromRaw</span><span class="p">(</span><span class="n">input</span><span class="p">)</span>
                 <span class="n">handler</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
-            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">RequestParseException</span><span class="p">)</span> <span class="p">{</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">RequestParseException</span><span class="p">)</span> <span class="p">{</span>
                 <span class="n">logger</span><span class="p">.</span><span class="n">warn</span><span class="p">(</span><span class="s">"Could not parse a request"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
                 <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">BAD_REQUEST</span><span class="p">)</span>
             <span class="p">}</span>
@@ -138,7 +138,7 @@
         <span class="p">}</span>
     <span class="p">}</span>
 
-    <span class="k">override</span> <span class="k">fun</span> <span class="n">close</span><span class="p">()</span> <span class="p">{</span>
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">close</span><span class="p">()</span> <span class="p">{</span>
         <span class="n">logger</span><span class="p">.</span><span class="n">info</span><span class="p">(</span><span class="s">"Stopping server"</span><span class="p">)</span>
         <span class="n">serverSocket</span><span class="p">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">handlerThreadPool</span><span class="p">.</span><span class="n">shutdown</span><span class="p">()</span>
@@ -154,8 +154,8 @@
 <h3 id="testing">Testing!</h3>
 <p>Let’s test if that works.</p>
 
-<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
-<span class="k">fun</span> <span class="err">`</span><span class="n">should</span> <span class="n">process</span> <span class="n">multiple</span> <span class="n">requests</span> <span class="n">at</span> <span class="n">once</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="nf">should</span> <span class="n">process</span> <span class="n">multiple</span> <span class="n">requests</span> <span class="n">at</span> <span class="n">once</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
     <span class="c1">// given</span>
     <span class="kd">val</span> <span class="py">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span>
         <span class="n">Thread</span><span class="p">.</span><span class="n">sleep</span><span class="p">(</span><span class="m">200</span><span class="p">)</span>
@@ -173,7 +173,7 @@
                 <span class="k">if</span> <span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">status</span> <span class="p">==</span> <span class="n">Status</span><span class="p">.</span><span class="n">OK</span><span class="p">)</span> <span class="p">{</span>
                     <span class="n">completedRequests</span><span class="p">.</span><span class="n">countDown</span><span class="p">()</span>
                 <span class="p">}</span>
-            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
                 <span class="n">e</span><span class="p">.</span><span class="n">printStackTrace</span><span class="p">()</span>
             <span class="p">}</span>
         <span class="p">}</span>
@@ -267,9 +267,9 @@ Additionally, let’s assume that we can spawn other connections to the database
 
 <p>To name our thread pool we have to pass <a href="https://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ThreadFactory.html"><code class="highlighter-rouge">ThreadFactory</code></a> instance. If you’ve got Guava on your classpath, use <a href="https://google.github.io/guava/releases/20.0/api/docs/com/google/common/util/concurrent/ThreadFactoryBuilder.html"><code class="highlighter-rouge">ThreadFactoryBuilder</code></a>, which provides a nice API to create it. We don’t so we have to do it by ourselves.</p>
 
-<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="kd">class</span> <span class="nc">IncrementingThreadFactory</span><span class="p">(</span><span class="kd">val</span> <span class="py">prefix</span><span class="p">:</span> <span class="n">String</span><span class="p">):</span> <span class="n">ThreadFactory</span> <span class="p">{</span>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="kd">class</span> <span class="nc">IncrementingThreadFactory</span><span class="p">(</span><span class="kd">val</span> <span class="py">prefix</span><span class="p">:</span> <span class="n">String</span><span class="p">):</span> <span class="nc">ThreadFactory</span> <span class="p">{</span>
     <span class="kd">val</span> <span class="py">adder</span> <span class="p">=</span> <span class="n">AtomicInteger</span><span class="p">()</span>
-    <span class="k">override</span> <span class="k">fun</span> <span class="n">newThread</span><span class="p">(</span><span class="n">r</span><span class="p">:</span> <span class="n">Runnable</span><span class="p">)</span> <span class="p">=</span> <span class="n">Thread</span><span class="p">(</span><span class="n">r</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">name</span> <span class="p">=</span> <span class="s">"$prefix-${adder.getAndIncrement()}"</span> <span class="p">}</span>
+    <span class="k">override</span> <span class="k">fun</span> <span class="nf">newThread</span><span class="p">(</span><span class="nv">r</span><span class="p">:</span> <span class="nc">Runnable</span><span class="p">)</span> <span class="p">=</span> <span class="n">Thread</span><span class="p">(</span><span class="n">r</span><span class="p">).</span><span class="n">also</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">name</span> <span class="p">=</span> <span class="s">"$prefix-${adder.getAndIncrement()}"</span> <span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div></div>
 
@@ -288,6 +288,12 @@ Additionally, let’s assume that we can spawn other connections to the database
 <h1 id="other-articles-of-the-series">Other articles of the series</h1>
 <p>This article is a part of the HTTP series</p>
 <ul>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/11/01/http-part6.html">The HTTP part 6 - HTTP Client</a>
+        
+    </li>
   
     <li>
         
