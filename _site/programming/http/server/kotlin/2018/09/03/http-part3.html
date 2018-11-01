@@ -16,6 +16,9 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/09/03/http-part3.html">
   <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+
+  <script src="/assets/js/cookies-eu-banner.js"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-32136566-8"></script>
 </head>
 
 
@@ -537,7 +540,25 @@ s.setAttribute('data-timestamp', +new Date());
       </div>
     </div>
 
+    <div id="cookies-eu-banner" style="display: none;">
+      This site uses cookies to collect visits statistics via Google Analytics
+      <!-- By continuing your visit to this site, you accept the use of cookies by Google Analytics to make visits statistics. -->
+      <a href="https://policies.google.com/technologies/cookies" target="_blank" id="cookies-eu-more" class="cookies-eu-more-link">Read more</a>
+      <!-- <button id="cookies-eu-reject">No</button> -->
+      <button id="cookies-eu-accept">OK</button>
+    </div>
+
+    <script>
+      new CookiesEuBanner(function(){
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'UA-32136566-8');
+      }, true);
+    </script>
   </div>
+
 
 </footer>
 

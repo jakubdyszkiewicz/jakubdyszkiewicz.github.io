@@ -89,6 +89,8 @@ a {
       border-bottom: 1px dotted black !important; }
     a.post-title-link:visited {
       color: "crimson" !important; }
+  a.cookies-eu-more-link {
+    color: #aaa !important; }
 
 /**
  * Blockquotes
@@ -727,3 +729,43 @@ pre {
 img + em {
   display: block;
   text-align: center; }
+
+#cookies-eu-banner {
+  background: #828282;
+  color: #fff;
+  padding: 6px;
+  font-size: 13px;
+  text-align: center;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%; }
+
+#cookies-eu-more,
+#cookies-eu-accept,
+#cookies-eu-reject {
+  line-height: normal;
+  display: inline-block;
+  text-decoration: none;
+  background: #424242;
+  color: #fff;
+  border: 1px solid #424242;
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 4px 7px;
+  margin: 0px 0;
+  font-size: 13px;
+  font-weight: bold;
+  transition: background 0.07s, color 0.07s, border-color 0.07s; }
+
+#cookies-eu-more:hover,
+#cookies-eu-more:focus,
+#cookies-eu-accept:hover,
+#cookies-eu-accept:focus {
+  background: #292929; }
+
+#cookies-eu-more {
+  margin-left: 7px; }
+
+#cookies-eu-accept {
+  padding-bottom: 6px; }

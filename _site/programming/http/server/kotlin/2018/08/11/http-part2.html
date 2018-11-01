@@ -16,6 +16,9 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="canonical" href="http://localhost:4000/programming/http/server/kotlin/2018/08/11/http-part2.html">
   <link rel="alternate" type="application/rss+xml" title="Dyszkiewicz;" href="http://localhost:4000/feed.xml">
+
+  <script src="/assets/js/cookies-eu-banner.js"></script>
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-32136566-8"></script>
 </head>
 
 
@@ -144,7 +147,6 @@ java    23785 jakub.dyszkiewicz   46u  IPv6 0x8bf0b7d1e55ec753      0t0  TCP loc
         <span class="n">clientsThreadPool</span><span class="p">.</span><span class="n">submit</span> <span class="p">{</span>
             <span class="k">try</span> <span class="p">{</span>
                 <span class="kd">val</span> <span class="py">connection</span> <span class="p">=</span> <span class="n">URL</span><span class="p">(</span><span class="s">"http://localhost:8090/"</span><span class="p">).</span><span class="n">openConnection</span><span class="p">()</span> <span class="k">as</span> <span class="n">HttpURLConnection</span>
-                <span class="n">connection</span><span class="p">.</span><span class="n">connectTimeout</span> <span class="p">=</span> <span class="m">1000</span>
                 <span class="n">connection</span><span class="p">.</span><span class="n">connect</span><span class="p">()</span>
                 <span class="k">if</span> <span class="p">(</span><span class="n">connection</span><span class="p">.</span><span class="n">responseCode</span> <span class="p">==</span> <span class="m">200</span><span class="p">)</span> <span class="p">{</span>
                     <span class="n">completedRequest</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span>
@@ -368,7 +370,25 @@ s.setAttribute('data-timestamp', +new Date());
       </div>
     </div>
 
+    <div id="cookies-eu-banner" style="display: none;">
+      This site uses cookies to collect visits statistics via Google Analytics
+      <!-- By continuing your visit to this site, you accept the use of cookies by Google Analytics to make visits statistics. -->
+      <a href="https://policies.google.com/technologies/cookies" target="_blank" id="cookies-eu-more" class="cookies-eu-more-link">Read more</a>
+      <!-- <button id="cookies-eu-reject">No</button> -->
+      <button id="cookies-eu-accept">OK</button>
+    </div>
+
+    <script>
+      new CookiesEuBanner(function(){
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+
+        gtag('config', 'UA-32136566-8');
+      }, true);
+    </script>
   </div>
+
 
 </footer>
 
