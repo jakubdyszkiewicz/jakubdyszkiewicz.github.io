@@ -19,10 +19,10 @@ We will reuse a connection for multiple requests. The time a connection is kept 
 
 
 
-There should be a limit of opened connection per destination, which is a pair of host and port. To explain this, let’s say we set it to 2. We send a request that creates the first connection. If we send another one before first is completed then the new connection is created.
-If 2 requests are pending and we send yet another one, then we have to wait for one of them to finish. We wait for maximum time configured by the _connection request timeout_.
+There should be a limit of opened connections per destination, which is a pair of host and port. To explain this, let’s say we set it to 2. We send a request that creates the first connection. If we send another one before first is completed then the new connection is created.
+If 2 requests are pending and we send another one, then we have to wait for one of them to finish. We wait for maximum time configured by the _connection request timeout_.
 
-Now, let’s get back to the situation without any opened connection. We send a request that opens a connection. We send another one but before that, the previous request is completed so the connection is released back to the pool. This second request will lease and use this connection, therefore only 1 connection would be opened.
+Now, let’s get back to the situation without any opened connection. We send a request that opens a connection. Then we send another one, but before that the previous request is completed so the connection is released back to the pool. This second request will reuse previous connection, therefore only 1 connection would be opened.
 
 * #### Connection timeout
 
@@ -118,10 +118,10 @@ data class SocketClientStats(val poolStats: ConnectionClientPoolStats)
 
 We pass a bunch of arguments that were explained above. The `checkKeepAliveInterval`  (1) is how often the checker for cleaning up the old connections runs.  We pass it to the connection pool that we start on class initialization.
 
-In the `exchange()` function, we retrieve (lease or create) a connection from the pool (2). Then we do I/O converting data between strings and our structures (3). If we catch an exception, we have to close the connection (4). It probably means that there was a violation of the HTTP protocol, therefore we cannot continue sending more data on this connection. Whether we succeed or not, we should release the connection back to the pool (5).
+In the `exchange()` function, we retrieve (lease or create) a connection from the pool (2). Then we do I/O operations converting data between strings and our structures (3). If we catch an exception, we have to close the connection (4). It probably means that there was a violation of the HTTP protocol, therefore we cannot continue sending more data on this connection. Whether we succeed or not, we should release the connection back to the pool (5).
 
 ### ConnectionPool
-Here comes the difficult part. Firstly, I thought we could reuse the pool from the server, but the client’s pool is much more complicated. It supports connection leasing, limits connection per destination and checks connection inactivity in a different way.
+Here comes the difficult part. At first I thought we could reuse the pool from the server, but the client’s pool is much more complicated. It supports connection leasing, limits connection per destination and checks connection inactivity in a different way.
 
 Let’s break it down one by one.
 
@@ -151,7 +151,7 @@ internal class Connection(
 
     /**
      * If the connection is checked for inactivity for inactiveChecksThreshold times and there was no activity
-     * it is assumed that connection is no longer active. It is optimization so we don't have to call time()
+     * it is assumed that connection is no longer active. It is an optimization so we don't have to call time()
      * for every byte on socket.
      */
     // (3)
@@ -202,7 +202,7 @@ internal class Connection(
 
 open class ConnectionException(msg: String, throwable: Throwable? = null): RuntimeException(msg, throwable)
 ```
-How should we tell whether the connection is no longer active? It would be so easy to save the timestamp of the last activity and compare it to `keepAliveTimeout`, but calling `System.nanoTime()` on every byte send/received would create an overhead. Instead, we create a counter (1) that is incremented on every inactivity check (2).  We know how often this method will be called because of the `checkKeepAliveInternal` argument, so we can compute (3) after how many checks the connection is no longer active.
+How can we tell whether the connection is active or not? It would be so easy to save the timestamp of the last activity and compare it to `keepAliveTimeout`, but calling `System.nanoTime()` on every byte send/received would create an overhead. Instead, we create a counter (1) that is incremented on every inactivity check (2).  We know how often this method will be called because of the `checkKeepAliveInternal` argument, so we can compute (3) after how many checks the connection is no longer active.
 If there is any activity, then `ActivityTrackingInputStream` and `ActivityTrackingOutputStream` decorators will reset the counter.
 
 This solution is not ideal, because we have to trust the client of this class to run the `isInactive()` method with the `checkKeepAliveInterval` interval. On the other hand, the `Connection` class won’t be visible to the end user of our `SocketClient` so I think we can live with that.
@@ -266,8 +266,8 @@ private class Connections {
 
 }
 ```
-We keep separate queues of connections for leased and available connections. We can lease a connection (1), but we have to be careful not to return a closed connection. We can add already leased connection (2). This will be useful when we will create a connection and return it immediately to the client. We can release connection (3) so it is placed back into the leased queue.
-There is also a method for closing stale connections (4), it seeks for inactive connections, closes it and removes those from the queues.
+We keep separate queues of connections for leased and available connections. We can lease a connection (1), but we have to be careful not to return a closed connection. We can add already leased connection (2). This will be useful when we create a connection and return it immediately to the client. We can release connection (3) so it is placed back into the leased queue.
+There is also a method for closing stale connections (4), it seeks for inactive connections, closes them and removes from the queues.
 
 #### ConnectionPool
 Now we can put it all together.
@@ -370,7 +370,7 @@ internal class ClientConnectionPool(
 }
 ```
 To retrieve a connection we have to acquire a permit (1). A permit is a semaphore that guards the pool against creating more than the limit of connections per destination. If we acquired all the permits, then the next request for a connection will wait for the max of `connectionRequestTimeout` duration (2). 
-If we successfully acquired the permit it either means that we can lease a connection or create one (3). Firstly, we try to lease a connection because we’d rather reuse a connection than create a new one. If we succeeded, we return it to the user. Otherwise, we need to create a new one. While connecting, we have to set socket and connection timeouts (4). A new connection is added to the `connections` as leased and immediately returned to the client.
+If we successfully acquired the permit it means that we can either lease a connection or create one (3). Firstly, we try to lease a connection because we’d rather reuse a connection than create a new one. If we succeeded, we return it to the user. Otherwise, we need to create a new one. While connecting, we have to set socket and connection timeouts (4). A new connection is added to the `connections` as leased and immediately returned to the client.
 We track the number of established connections for testing purposes (5).
 
 When we start the pool, we also schedule the closing of stale connections at `checkKeepAliveInterval` rate (6).
