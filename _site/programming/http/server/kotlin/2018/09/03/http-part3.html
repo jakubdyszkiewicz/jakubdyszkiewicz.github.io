@@ -199,7 +199,7 @@ user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (
     <span class="n">CONNECT</span><span class="p">;</span>
 
     <span class="k">companion</span> <span class="k">object</span> <span class="p">{</span>
-        <span class="k">fun</span> <span class="n">valueOfOrNull</span><span class="p">(</span><span class="n">method</span><span class="p">:</span> <span class="n">String</span><span class="p">):</span> <span class="n">RequestMethod</span><span class="p">?</span> <span class="p">=</span> <span class="n">values</span><span class="p">().</span><span class="n">firstOrNull</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">name</span> <span class="p">==</span> <span class="n">method</span> <span class="p">}</span>
+        <span class="k">fun</span> <span class="nf">valueOfOrNull</span><span class="p">(</span><span class="nv">method</span><span class="p">:</span> <span class="nc">String</span><span class="p">):</span> <span class="nc">RequestMethod</span><span class="p">?</span> <span class="p">=</span> <span class="n">values</span><span class="p">().</span><span class="n">firstOrNull</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">name</span> <span class="p">==</span> <span class="n">method</span> <span class="p">}</span>
     <span class="p">}</span>
 <span class="p">}</span>
 
@@ -210,12 +210,12 @@ user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (
     <span class="c1">// todo more status codes</span>
 <span class="p">}</span>
 
-<span class="kd">class</span> <span class="nc">HttpHeaders</span><span class="p">(</span><span class="n">mapOfHeaders</span><span class="p">:</span> <span class="n">Map</span><span class="p">&lt;</span><span class="n">String</span><span class="p">,</span> <span class="n">Collection</span><span class="p">&lt;</span><span class="n">String</span><span class="p">&gt;&gt;</span> <span class="p">=</span> <span class="n">emptyMap</span><span class="p">())</span> <span class="p">{</span>
+<span class="kd">class</span> <span class="nc">HttpHeaders</span><span class="p">(</span><span class="nv">mapOfHeaders</span><span class="p">:</span> <span class="nc">Map</span><span class="p">&lt;</span><span class="nc">String</span><span class="p">,</span> <span class="nc">Collection</span><span class="err">&lt;</span><span class="nc">String</span><span class="p">&gt;&gt;</span> <span class="p">=</span> <span class="n">emptyMap</span><span class="p">())</span> <span class="p">{</span>
 
     <span class="k">private</span> <span class="kd">val</span> <span class="py">mapOfHeaders</span><span class="p">:</span> <span class="n">Map</span><span class="p">&lt;</span><span class="n">String</span><span class="p">,</span> <span class="n">Collection</span><span class="p">&lt;</span><span class="n">String</span><span class="p">&gt;&gt;</span> <span class="p">=</span> <span class="n">mapOfHeaders</span><span class="p">.</span><span class="n">mapKeys</span> <span class="p">{</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">k</span><span class="p">.</span><span class="n">toLowerCase</span><span class="p">()</span> <span class="p">}</span> <span class="c1">//1</span>
 
-    <span class="k">constructor</span><span class="p">(</span><span class="k">vararg</span> <span class="n">pairs</span><span class="p">:</span> <span class="n">Pair</span><span class="p">&lt;</span><span class="n">String</span><span class="p">,</span> <span class="n">String</span><span class="p">&gt;)</span>
-            <span class="p">:</span> <span class="k">this</span><span class="p">(</span><span class="n">pairs</span><span class="p">.</span><span class="n">asSequence</span><span class="p">()</span>
+    <span class="k">constructor</span><span class="p">(</span><span class="k">vararg</span> <span class="nv">pairs</span><span class="p">:</span> <span class="nc">Pair</span><span class="p">&lt;</span><span class="nc">String</span><span class="p">,</span> <span class="nc">String</span><span class="p">&gt;)</span>
+            <span class="p">:</span> <span class="nc">this</span><span class="p">(</span><span class="n">pairs</span><span class="p">.</span><span class="n">asSequence</span><span class="p">()</span>
             <span class="p">.</span><span class="n">groupBy</span> <span class="p">{</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">name</span> <span class="p">}</span> <span class="c1">// 2</span>
             <span class="p">.</span><span class="n">mapValues</span> <span class="p">{</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">namesWithValues</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">namesWithValues</span><span class="p">.</span><span class="n">map</span> <span class="p">{</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">values</span> <span class="p">}</span> <span class="p">}</span>
             <span class="p">.</span><span class="n">toMap</span><span class="p">())</span>
@@ -224,9 +224,9 @@ user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (
 
     <span class="kd">val</span> <span class="py">contentLength</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="k">this</span><span class="p">[</span><span class="s">"content-length"</span><span class="p">].</span><span class="n">firstOrNull</span><span class="p">()</span><span class="o">?.</span><span class="n">toInt</span><span class="p">()</span> <span class="o">?:</span> <span class="m">0</span>
 
-    <span class="k">fun</span> <span class="n">asSequence</span><span class="p">()</span> <span class="p">=</span> <span class="n">mapOfHeaders</span><span class="p">.</span><span class="n">asSequence</span><span class="p">()</span>
-    <span class="k">operator</span> <span class="k">fun</span> <span class="k">get</span><span class="p">(</span><span class="n">key</span><span class="p">:</span> <span class="n">String</span><span class="p">):</span> <span class="n">Collection</span><span class="p">&lt;</span><span class="n">String</span><span class="p">&gt;</span> <span class="p">=</span> <span class="n">mapOfHeaders</span><span class="p">[</span><span class="n">key</span><span class="p">.</span><span class="n">toLowerCase</span><span class="p">()]</span> <span class="o">?:</span> <span class="n">emptyList</span><span class="p">()</span>
-    <span class="k">operator</span> <span class="k">fun</span> <span class="n">plus</span><span class="p">(</span><span class="n">pair</span><span class="p">:</span> <span class="n">Pair</span><span class="p">&lt;</span><span class="n">String</span><span class="p">,</span> <span class="n">String</span><span class="p">&gt;)</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="n">mapOfHeaders</span> <span class="p">+</span> <span class="p">(</span><span class="n">pair</span><span class="p">.</span><span class="n">first</span> <span class="n">to</span> <span class="n">listOf</span><span class="p">(</span><span class="n">pair</span><span class="p">.</span><span class="n">second</span><span class="p">)))</span>
+    <span class="k">fun</span> <span class="nf">asSequence</span><span class="p">()</span> <span class="p">=</span> <span class="n">mapOfHeaders</span><span class="p">.</span><span class="n">asSequence</span><span class="p">()</span>
+    <span class="k">operator</span> <span class="k">fun</span> <span class="nf">get</span><span class="p">(</span><span class="nv">key</span><span class="p">:</span> <span class="nc">String</span><span class="p">):</span> <span class="nc">Collection</span><span class="p">&lt;</span><span class="nc">String</span><span class="p">&gt;</span> <span class="p">=</span> <span class="n">mapOfHeaders</span><span class="p">[</span><span class="n">key</span><span class="p">.</span><span class="n">toLowerCase</span><span class="p">()]</span> <span class="o">?:</span> <span class="n">emptyList</span><span class="p">()</span>
+    <span class="k">operator</span> <span class="k">fun</span> <span class="nf">plus</span><span class="p">(</span><span class="nv">pair</span><span class="p">:</span> <span class="nc">Pair</span><span class="p">&lt;</span><span class="nc">String</span><span class="p">,</span> <span class="nc">String</span><span class="p">&gt;)</span> <span class="p">=</span> <span class="n">HttpHeaders</span><span class="p">(</span><span class="n">mapOfHeaders</span> <span class="p">+</span> <span class="p">(</span><span class="n">pair</span><span class="p">.</span><span class="n">first</span> <span class="n">to</span> <span class="n">listOf</span><span class="p">(</span><span class="n">pair</span><span class="p">.</span><span class="n">second</span><span class="p">)))</span>
 <span class="p">}</span>
 
 <span class="k">typealias</span> <span class="n">Handler</span> <span class="p">=</span> <span class="p">(</span><span class="n">Request</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">Response</span>
@@ -243,11 +243,11 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="kd">val</span> <span class="py">headerRegex</span> <span class="p">=</span> <span class="s">"^(.+): (.+)$"</span><span class="p">.</span><span class="n">toRegex</span><span class="p">()</span>
 <span class="k">private</span> <span class="kd">val</span> <span class="py">requestLineRegex</span> <span class="p">=</span> <span class="s">"^(.+) (.+) (.+)$"</span><span class="p">.</span><span class="n">toRegex</span><span class="p">()</span>
 
-<span class="kd">class</span> <span class="nc">RequestParseException</span><span class="p">(</span><span class="n">msg</span><span class="p">:</span> <span class="n">String</span><span class="p">):</span> <span class="n">RuntimeException</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<span class="kd">class</span> <span class="nc">RequestParseException</span><span class="p">(</span><span class="nv">msg</span><span class="p">:</span> <span class="nc">String</span><span class="p">):</span> <span class="nc">RuntimeException</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
 
 <span class="k">private</span> <span class="kd">data class</span> <span class="nc">RequestLine</span><span class="p">(</span><span class="kd">val</span> <span class="py">method</span><span class="p">:</span> <span class="n">RequestMethod</span><span class="p">,</span> <span class="kd">val</span> <span class="py">path</span><span class="p">:</span> <span class="n">String</span><span class="p">,</span> <span class="kd">val</span> <span class="py">protocol</span><span class="p">:</span> <span class="n">String</span><span class="p">)</span>
 
-<span class="k">fun</span> <span class="n">Request</span><span class="p">.</span><span class="n">Companion</span><span class="p">.</span><span class="n">fromRaw</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="n">BufferedReader</span><span class="p">):</span> <span class="n">Request</span> <span class="p">{</span>
+<span class="k">fun</span> <span class="nc">Request</span><span class="p">.</span><span class="nc">Companion</span><span class="p">.</span><span class="nf">fromRaw</span><span class="p">(</span><span class="nv">input</span><span class="p">:</span> <span class="nc">BufferedReader</span><span class="p">):</span> <span class="nc">Request</span> <span class="p">{</span>
     <span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">parseRequestLine</span><span class="p">(</span><span class="n">input</span><span class="p">)</span>
     <span class="kd">val</span> <span class="py">headers</span> <span class="p">=</span> <span class="n">parseHeaders</span><span class="p">(</span><span class="n">input</span><span class="p">)</span>
     <span class="kd">val</span> <span class="py">body</span> <span class="p">=</span> <span class="n">parseBody</span><span class="p">(</span><span class="n">headers</span><span class="p">,</span> <span class="n">input</span><span class="p">)</span>
@@ -255,9 +255,9 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 <span class="p">}</span>
 
 <span class="c1">// 3</span>
-<span class="k">private</span> <span class="k">fun</span> <span class="n">parseRequestLine</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="n">BufferedReader</span><span class="p">):</span> <span class="n">RequestLine</span> <span class="p">{</span>
+<span class="k">private</span> <span class="k">fun</span> <span class="nf">parseRequestLine</span><span class="p">(</span><span class="nv">input</span><span class="p">:</span> <span class="nc">BufferedReader</span><span class="p">):</span> <span class="nc">RequestLine</span> <span class="p">{</span>
     <span class="kd">val</span> <span class="py">requestLine</span> <span class="p">=</span> <span class="n">input</span><span class="p">.</span><span class="n">readLine</span><span class="p">()</span> <span class="o">?:</span> <span class="k">throw</span> <span class="n">RequestParseException</span><span class="p">(</span><span class="s">"Request must not be empty"</span><span class="p">)</span>
-    <span class="kd">val</span> <span class="err">(</span><span class="py">methodRaw</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">protocol</span><span class="p">)</span> <span class="p">=</span> <span class="n">requestLineRegex</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">requestLine</span><span class="p">)</span><span class="o">?.</span><span class="n">destructured</span>
+    <span class="kd">val</span> <span class="p">(</span><span class="py">methodRaw</span><span class="p">,</span> <span class="py">path</span><span class="p">,</span> <span class="py">protocol</span><span class="p">)</span> <span class="p">=</span> <span class="n">requestLineRegex</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">requestLine</span><span class="p">)</span><span class="o">?.</span><span class="n">destructured</span>
             <span class="o">?:</span> <span class="k">throw</span> <span class="n">RequestParseException</span><span class="p">(</span><span class="s">"Invalid request line. It should match ${requestLineRegex.pattern} pattern"</span><span class="p">)</span>
     <span class="kd">val</span> <span class="py">method</span> <span class="p">=</span> <span class="n">RequestMethod</span><span class="p">.</span><span class="n">valueOfOrNull</span><span class="p">(</span><span class="n">methodRaw</span><span class="p">)</span> <span class="o">?:</span> <span class="k">throw</span> <span class="n">RequestParseException</span><span class="p">(</span><span class="s">"Method $methodRaw is not supported"</span><span class="p">)</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">protocol</span> <span class="p">!=</span> <span class="n">PROTOCOL</span><span class="p">)</span> <span class="p">{</span>
@@ -267,11 +267,11 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 <span class="p">}</span>
 
 <span class="c1">// 4</span>
-<span class="k">private</span> <span class="k">fun</span> <span class="n">parseHeaders</span><span class="p">(</span><span class="n">input</span><span class="p">:</span> <span class="n">BufferedReader</span><span class="p">):</span> <span class="n">HttpHeaders</span> <span class="p">=</span>
+<span class="k">private</span> <span class="k">fun</span> <span class="nf">parseHeaders</span><span class="p">(</span><span class="nv">input</span><span class="p">:</span> <span class="nc">BufferedReader</span><span class="p">):</span> <span class="nc">HttpHeaders</span> <span class="p">=</span>
         <span class="n">input</span><span class="p">.</span><span class="n">lineSequence</span><span class="p">()</span>
                 <span class="p">.</span><span class="n">takeWhile</span> <span class="p">{</span> <span class="n">it</span><span class="p">.</span><span class="n">isNotBlank</span><span class="p">()</span> <span class="p">}</span>
                 <span class="p">.</span><span class="n">map</span> <span class="p">{</span>
-                    <span class="kd">val</span> <span class="err">(</span><span class="py">header</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="p">=</span> <span class="n">headerRegex</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">it</span><span class="p">)</span><span class="o">?.</span><span class="n">destructured</span>
+                    <span class="kd">val</span> <span class="p">(</span><span class="py">header</span><span class="p">,</span> <span class="py">values</span><span class="p">)</span> <span class="p">=</span> <span class="n">headerRegex</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">it</span><span class="p">)</span><span class="o">?.</span><span class="n">destructured</span>
                             <span class="o">?:</span> <span class="k">throw</span> <span class="n">RequestParseException</span><span class="p">(</span><span class="s">"Invalid header line: $it"</span><span class="p">)</span>
                     <span class="n">header</span> <span class="n">to</span> <span class="n">values</span><span class="p">.</span><span class="n">split</span><span class="p">(</span><span class="s">", "</span><span class="p">)</span>
                 <span class="p">}</span>
@@ -279,7 +279,7 @@ We also group headers (2) by name and convert to map in pair constructor so we c
                 <span class="p">.</span><span class="n">mapValues</span> <span class="p">{</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">valuesWithNames</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">valuesWithNames</span><span class="p">.</span><span class="n">map</span> <span class="p">{</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="n">values</span> <span class="p">}.</span><span class="n">flatten</span><span class="p">()</span> <span class="p">}</span>
                 <span class="p">.</span><span class="n">let</span><span class="p">(</span><span class="o">::</span><span class="n">HttpHeaders</span><span class="p">)</span>
 
-<span class="k">private</span> <span class="k">fun</span> <span class="n">parseBody</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="n">HttpHeaders</span><span class="p">,</span> <span class="n">input</span><span class="p">:</span> <span class="n">BufferedReader</span><span class="p">):</span> <span class="n">String</span><span class="p">?</span> <span class="p">=</span>
+<span class="k">private</span> <span class="k">fun</span> <span class="nf">parseBody</span><span class="p">(</span><span class="nv">headers</span><span class="p">:</span> <span class="nc">HttpHeaders</span><span class="p">,</span> <span class="nv">input</span><span class="p">:</span> <span class="nc">BufferedReader</span><span class="p">):</span> <span class="nc">String</span><span class="p">?</span> <span class="p">=</span>
         <span class="k">when</span> <span class="p">{</span>
             <span class="n">headers</span><span class="p">.</span><span class="n">contentLength</span> <span class="p">==</span> <span class="m">0</span> <span class="p">-&gt;</span> <span class="k">null</span>
             <span class="k">else</span> <span class="p">-&gt;</span> <span class="p">{</span>
@@ -308,7 +308,7 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 
 <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">private</span> <span class="k">const</span> <span class="kd">val</span> <span class="py">HEADERS_BODY_SEPARATOR</span> <span class="p">=</span> <span class="s">"\n"</span>
 
-<span class="k">fun</span> <span class="n">Response</span><span class="p">.</span><span class="n">toRaw</span><span class="p">():</span> <span class="n">String</span> <span class="p">{</span>
+<span class="k">fun</span> <span class="nc">Response</span><span class="p">.</span><span class="nf">toRaw</span><span class="p">():</span> <span class="nc">String</span> <span class="p">{</span>
     <span class="kd">val</span> <span class="py">buffer</span> <span class="p">=</span> <span class="n">StringBuffer</span><span class="p">()</span>
     <span class="n">appendStatusLine</span><span class="p">(</span><span class="n">buffer</span><span class="p">)</span>
     <span class="n">appendRawHeaders</span><span class="p">(</span><span class="n">buffer</span><span class="p">)</span>
@@ -316,14 +316,14 @@ We also group headers (2) by name and convert to map in pair constructor so we c
     <span class="k">return</span> <span class="n">buffer</span><span class="p">.</span><span class="n">toString</span><span class="p">()</span>
 <span class="p">}</span>
 
-<span class="k">private</span> <span class="k">fun</span> <span class="n">Response</span><span class="p">.</span><span class="n">appendRawHeaders</span><span class="p">(</span><span class="n">buffer</span><span class="p">:</span> <span class="n">StringBuffer</span><span class="p">)</span> <span class="p">{</span>
+<span class="k">private</span> <span class="k">fun</span> <span class="nc">Response</span><span class="p">.</span><span class="nf">appendRawHeaders</span><span class="p">(</span><span class="nv">buffer</span><span class="p">:</span> <span class="nc">StringBuffer</span><span class="p">)</span> <span class="p">{</span>
     <span class="n">headers</span><span class="p">.</span><span class="n">asSequence</span><span class="p">()</span>
             <span class="p">.</span><span class="n">joinTo</span><span class="p">(</span><span class="n">buffer</span><span class="p">)</span> <span class="p">{</span>
                 <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">values</span><span class="p">)</span> <span class="p">-&gt;</span> <span class="s">"$name: ${values.joinToString("</span><span class="p">,</span> <span class="s">")}\n"</span>
             <span class="p">}</span>
 <span class="p">}</span>
 
-<span class="k">private</span> <span class="k">fun</span> <span class="n">Response</span><span class="p">.</span><span class="n">appendStatusLine</span><span class="p">(</span><span class="n">buffer</span><span class="p">:</span> <span class="n">StringBuffer</span><span class="p">)</span> <span class="p">=</span> <span class="n">buffer</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">"$PROTOCOL ${status.code} ${status.reason}\n"</span><span class="p">)</span>
+<span class="k">private</span> <span class="k">fun</span> <span class="nc">Response</span><span class="p">.</span><span class="nf">appendStatusLine</span><span class="p">(</span><span class="nv">buffer</span><span class="p">:</span> <span class="nc">StringBuffer</span><span class="p">)</span> <span class="p">=</span> <span class="n">buffer</span><span class="p">.</span><span class="n">append</span><span class="p">(</span><span class="s">"$PROTOCOL ${status.code} ${status.reason}\n"</span><span class="p">)</span>
 </code></pre></div></div>
 
 <p>Firstly, we generate a status line which contains a protocol, a status code, and a status reason. Then we append headers and after that, if body exists we append it after a new line which is a separator.</p>
@@ -336,18 +336,18 @@ We also group headers (2) by name and convert to map in pair constructor so we c
         <span class="kd">val</span> <span class="py">handler</span><span class="p">:</span> <span class="n">Handler</span><span class="p">,</span>
         <span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">,</span>
         <span class="kd">val</span> <span class="py">maxIncomingConnections</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">1</span>
-<span class="p">):</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+<span class="p">):</span> <span class="nc">AutoCloseable</span> <span class="p">{</span>
 
    <span class="o">..</span><span class="p">.</span>
 
-    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">handleConnection</span><span class="p">(</span><span class="nv">socket</span><span class="p">:</span> <span class="nc">Socket</span><span class="p">)</span> <span class="p">{</span>
         <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
         <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
 
         <span class="kd">val</span> <span class="py">response</span> <span class="p">=</span> <span class="k">try</span> <span class="p">{</span>
             <span class="kd">val</span> <span class="py">request</span> <span class="p">=</span> <span class="n">Request</span><span class="p">.</span><span class="n">fromRaw</span><span class="p">(</span><span class="n">input</span><span class="p">)</span>
             <span class="n">handler</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
-        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">RequestParseException</span><span class="p">)</span> <span class="p">{</span>
+        <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">RequestParseException</span><span class="p">)</span> <span class="p">{</span>
             <span class="n">Response</span><span class="p">(</span><span class="n">status</span> <span class="p">=</span> <span class="n">Status</span><span class="p">.</span><span class="n">BAD_REQUEST</span><span class="p">)</span>
         <span class="p">}</span>
         <span class="n">output</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="n">response</span><span class="p">.</span><span class="n">toRaw</span><span class="p">())</span>
@@ -363,8 +363,8 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 
 <h3 id="echo-did-you-hear-me">Echo! Did you hear me?</h3>
 <p>The simplest test for our new code is to send a request to a server with body and headers and receive it back.</p>
-<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
-    <span class="k">fun</span> <span class="err">`</span><span class="n">server</span> <span class="n">should</span> <span class="n">echo</span> <span class="n">body</span> <span class="n">and</span> <span class="n">headers</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+    <span class="k">fun</span> <span class="err">`</span><span class="nf">server</span> <span class="n">should</span> <span class="n">echo</span> <span class="n">body</span> <span class="n">and</span> <span class="n">headers</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
         <span class="c1">// given</span>
         <span class="kd">val</span> <span class="py">body</span> <span class="p">=</span> <span class="s">"Echo!"</span>
         <span class="kd">val</span> <span class="py">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">maxIncomingConnections</span> <span class="p">=</span> <span class="m">1</span><span class="p">,</span> <span class="n">handler</span> <span class="p">=</span> <span class="p">{</span> <span class="n">request</span> <span class="p">-&gt;</span>
@@ -434,6 +434,12 @@ We also group headers (2) by name and convert to map in pair constructor so we c
 <h1 id="other-articles-of-the-series">Other articles of the series</h1>
 <p>This article is a part of the HTTP series</p>
 <ul>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/11/05/http-part6.html">The HTTP part 6 - HTTP Client</a>
+        
+    </li>
   
     <li>
         

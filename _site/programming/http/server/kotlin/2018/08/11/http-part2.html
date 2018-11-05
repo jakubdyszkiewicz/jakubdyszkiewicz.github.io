@@ -109,13 +109,13 @@ java    23785 jakub.dyszkiewicz   46u  IPv6 0x8bf0b7d1e55ec753      0t0  TCP loc
 
 <div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kd">class</span> <span class="nc">Server</span><span class="p">(</span>
         <span class="kd">val</span> <span class="py">port</span><span class="p">:</span> <span class="n">Int</span><span class="p">,</span>
-        <span class="kd">val</span> <span class="py">maxIncomingConnections</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">1</span><span class="p">):</span> <span class="n">AutoCloseable</span> <span class="p">{</span>
+        <span class="kd">val</span> <span class="py">maxIncomingConnections</span><span class="p">:</span> <span class="n">Int</span> <span class="p">=</span> <span class="m">1</span><span class="p">):</span> <span class="nc">AutoCloseable</span> <span class="p">{</span>
 
     <span class="k">private</span> <span class="kd">val</span> <span class="py">serverSocket</span> <span class="p">=</span> <span class="n">ServerSocket</span><span class="p">(</span><span class="n">port</span><span class="p">,</span> <span class="n">maxIncomingConnections</span><span class="p">)</span>
 
     <span class="o">..</span><span class="p">.</span>
 
-    <span class="k">private</span> <span class="k">fun</span> <span class="n">handleConnection</span><span class="p">(</span><span class="n">socket</span><span class="p">:</span> <span class="n">Socket</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">private</span> <span class="k">fun</span> <span class="nf">handleConnection</span><span class="p">(</span><span class="nv">socket</span><span class="p">:</span> <span class="nc">Socket</span><span class="p">)</span> <span class="p">{</span>
         <span class="kd">val</span> <span class="py">input</span> <span class="p">=</span> <span class="n">socket</span><span class="p">.</span><span class="n">getInputStream</span><span class="p">().</span><span class="n">bufferedReader</span><span class="p">()</span>
         <span class="kd">val</span> <span class="py">output</span> <span class="p">=</span> <span class="n">PrintWriter</span><span class="p">(</span><span class="n">socket</span><span class="p">.</span><span class="n">getOutputStream</span><span class="p">())</span>
 
@@ -134,8 +134,8 @@ java    23785 jakub.dyszkiewicz   46u  IPv6 0x8bf0b7d1e55ec753      0t0  TCP loc
 </code></pre></div></div>
 <p>Now we should be able to fire 3 requests concurrently and see a problem. Let’s test it!</p>
 
-<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">@Test</span>
-<span class="k">fun</span> <span class="err">`</span><span class="n">server</span> <span class="n">should</span> <span class="n">refuse</span> <span class="n">to</span> <span class="n">accept</span> <span class="n">more</span> <span class="n">connections</span> <span class="n">that</span> <span class="n">maxIncommingConnections</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
+<div class="language-kotlin highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nd">@Test</span>
+<span class="k">fun</span> <span class="err">`</span><span class="nf">server</span> <span class="n">should</span> <span class="n">refuse</span> <span class="n">to</span> <span class="n">accept</span> <span class="n">more</span> <span class="n">connections</span> <span class="n">that</span> <span class="n">maxIncommingConnections</span><span class="err">`</span><span class="p">()</span> <span class="p">{</span>
     <span class="c1">// given</span>
     <span class="kd">val</span> <span class="py">server</span> <span class="p">=</span> <span class="n">Server</span><span class="p">(</span><span class="n">port</span> <span class="p">=</span> <span class="m">8090</span><span class="p">,</span> <span class="n">maxIncomingConnections</span> <span class="p">=</span> <span class="m">1</span><span class="p">)</span>
 
@@ -152,7 +152,7 @@ java    23785 jakub.dyszkiewicz   46u  IPv6 0x8bf0b7d1e55ec753      0t0  TCP loc
                     <span class="n">completedRequest</span><span class="p">.</span><span class="n">increment</span><span class="p">()</span>
                 <span class="p">}</span>
                 <span class="n">connection</span><span class="p">.</span><span class="n">disconnect</span><span class="p">()</span>
-            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="n">e</span><span class="p">:</span> <span class="n">Exception</span><span class="p">)</span> <span class="p">{</span>
+            <span class="p">}</span> <span class="k">catch</span> <span class="p">(</span><span class="nv">e</span><span class="p">:</span> <span class="nc">Exception</span><span class="p">)</span> <span class="p">{</span>
                 <span class="n">e</span><span class="p">.</span><span class="n">printStackTrace</span><span class="p">()</span>
                 <span class="k">throw</span> <span class="n">e</span>
             <span class="p">}</span>
@@ -264,6 +264,12 @@ In order to send something over TCP, you have to first establish a connection. T
 <h1 id="other-articles-of-the-series">Other articles of the series</h1>
 <p>This article is a part of the HTTP series</p>
 <ul>
+  
+    <li>
+        
+            <a href="/programming/http/server/kotlin/2018/11/05/http-part6.html">The HTTP part 6 - HTTP Client</a>
+        
+    </li>
   
     <li>
         
