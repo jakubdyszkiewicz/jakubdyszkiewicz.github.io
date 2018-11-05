@@ -5,8 +5,8 @@
     <description>Tech blog</description>
     <link>http://localhost:4000/</link>
     <atom:link href="http://localhost:4000/feed.xml" rel="self" type="application/rss+xml"/>
-    <pubDate>Sun, 04 Nov 2018 13:13:20 +0100</pubDate>
-    <lastBuildDate>Sun, 04 Nov 2018 13:13:20 +0100</lastBuildDate>
+    <pubDate>Mon, 05 Nov 2018 08:39:38 +0100</pubDate>
+    <lastBuildDate>Mon, 05 Nov 2018 08:39:38 +0100</lastBuildDate>
     <generator>Jekyll v3.8.4</generator>
     
       <item>
@@ -560,9 +560,9 @@ We will benchmark and profile our server and client in the future.&lt;/p&gt;
   
 &lt;/ul&gt;
 </description>
-        <pubDate>Thu, 01 Nov 2018 08:40:31 +0100</pubDate>
-        <link>http://localhost:4000/programming/http/server/kotlin/2018/11/01/http-part6.html</link>
-        <guid isPermaLink="true">http://localhost:4000/programming/http/server/kotlin/2018/11/01/http-part6.html</guid>
+        <pubDate>Mon, 05 Nov 2018 04:08:31 +0100</pubDate>
+        <link>http://localhost:4000/programming/http/server/kotlin/2018/11/05/http-part6.html</link>
+        <guid isPermaLink="true">http://localhost:4000/programming/http/server/kotlin/2018/11/05/http-part6.html</guid>
         
         
         <category>programming</category>
@@ -883,7 +883,7 @@ I created an implementation for my &lt;code class=&quot;highlighter-rouge&quot;&
   
     &lt;li&gt;
         
-            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/01/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
+            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/05/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
         
     &lt;/li&gt;
   
@@ -1164,7 +1164,7 @@ Additionally, let’s assume that we can spawn other connections to the database
   
     &lt;li&gt;
         
-            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/01/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
+            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/05/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
         
     &lt;/li&gt;
   
@@ -1591,7 +1591,7 @@ We also group headers (2) by name and convert to map in pair constructor so we c
   
     &lt;li&gt;
         
-            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/01/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
+            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/05/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
         
     &lt;/li&gt;
   
@@ -1848,7 +1848,7 @@ In order to send something over TCP, you have to first establish a connection. T
   
     &lt;li&gt;
         
-            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/01/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
+            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/05/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
         
     &lt;/li&gt;
   
@@ -2101,7 +2101,7 @@ close&lt;span class=&quot;o&quot;&gt;(&lt;/span&gt;3&lt;span class=&quot;o&quot;
   
     &lt;li&gt;
         
-            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/01/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
+            &lt;a href=&quot;/programming/http/server/kotlin/2018/11/05/http-part6.html&quot;&gt;The HTTP part 6 - HTTP Client&lt;/a&gt;
         
     &lt;/li&gt;
   
